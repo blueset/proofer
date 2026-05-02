@@ -13,6 +13,7 @@ pub fn layout(
     content: &ResolvedContent,
     design_attrs: &DesignAttributes,
     sizes: &[f32],
+    spacing: f32,
     font_id: FontId,
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
@@ -27,8 +28,6 @@ pub fn layout(
     if text.is_empty() {
         return Ok(());
     }
-
-    let spacing = 8.0; // points between size blocks
 
     for &size in sizes {
         let style = TextStyle {

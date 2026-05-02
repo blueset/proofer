@@ -363,6 +363,9 @@ pub enum LayoutType {
     Waterfall {
         /// Font sizes to cascade through.
         sizes: Vec<f32>,
+        /// Spacing between size blocks in points.
+        #[serde(default = "default_waterfall_spacing")]
+        spacing: f32,
     },
 
     /// Multi-column text flow.
@@ -374,6 +377,9 @@ pub enum LayoutType {
         /// Show per-column headers.
         #[serde(default)]
         show_headers: bool,
+        /// Label text repeated at the top of each column.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        column_label: Option<String>,
     },
 
     /// Glyph grid display.
@@ -395,6 +401,9 @@ pub enum LayoutType {
     StyleComparison {
         arrangement: ComparisonArrangement,
         overflow: ComparisonOverflow,
+        /// Spacing between rows/columns in points.
+        #[serde(default = "default_comparison_spacing")]
+        spacing: f32,
     },
 
     /// Multi-style page interleaving.
@@ -410,6 +419,14 @@ fn default_true() -> bool {
 
 fn default_cell_padding() -> f32 {
     4.0
+}
+
+fn default_waterfall_spacing() -> f32 {
+    8.0
+}
+
+fn default_comparison_spacing() -> f32 {
+    16.0
 }
 
 /// Glyph grid display mode.
@@ -593,6 +610,7 @@ pub fn example_document() -> ProofDocument {
                 name: Some("Waterfall".to_string()),
                 layout: LayoutType::Waterfall {
                     sizes: vec![8.0, 10.0, 12.0, 16.0, 24.0, 36.0, 48.0, 72.0],
+                    spacing: 8.0,
                 },
                 content: ContentSpec::Text {
                     text: "Hamburgefonstiv".to_string(),

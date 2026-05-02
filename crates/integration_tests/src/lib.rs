@@ -80,6 +80,7 @@ mod tests {
                     name: Some("Waterfall".to_string()),
                     layout: LayoutType::Waterfall {
                         sizes: vec![8.0, 12.0, 18.0, 24.0, 36.0, 48.0, 72.0],
+                    spacing: 8.0,
                     },
                     content: ContentSpec::Text {
                         text: "Hamburgefonstiv".to_string(),
@@ -226,6 +227,7 @@ mod tests {
                 name: Some("Waterfall".to_string()),
                 layout: LayoutType::Waterfall {
                     sizes: vec![8.0, 10.0, 12.0, 16.0, 24.0, 36.0, 48.0, 72.0],
+                    spacing: 8.0,
                 },
                 content: ContentSpec::Text {
                     text: "Hamburgefonstiv".to_string(),
@@ -261,6 +263,7 @@ mod tests {
                     count: 3,
                     gutter: 12.0,
                     show_headers: false,
+                    column_label: None,
                 },
                 content: ContentSpec::Text {
                     text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(50),
@@ -344,6 +347,7 @@ mod tests {
                 layout: LayoutType::StyleComparison {
                     arrangement: ComparisonArrangement::Columns,
                     overflow: ComparisonOverflow::Flow,
+                    spacing: 16.0,
                 },
                 content: ContentSpec::Text {
                     text: "The quick brown fox jumps over the lazy dog. ".repeat(10),
@@ -444,6 +448,7 @@ mod tests {
                     name: Some("Waterfall".to_string()),
                     layout: LayoutType::Waterfall {
                         sizes: vec![8.0, 12.0, 18.0, 24.0, 36.0, 48.0],
+                    spacing: 8.0,
                     },
                     content: ContentSpec::Text {
                         text: "Hamburgefonstiv".to_string(),

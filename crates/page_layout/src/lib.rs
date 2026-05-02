@@ -350,12 +350,13 @@ pub fn layout_document(
                     registry,
                 )?;
             }
-            proof_model::LayoutType::Waterfall { sizes } => {
+            proof_model::LayoutType::Waterfall { sizes, spacing } => {
                 layout_waterfall::layout(
                     &mut allocator,
                     &content,
                     &section.design_attrs,
                     sizes,
+                    *spacing,
                     primary_font_id,
                     registry,
                 )?;
@@ -363,7 +364,8 @@ pub fn layout_document(
             proof_model::LayoutType::Columns {
                 count,
                 gutter,
-                show_headers,
+                show_headers: _,
+                column_label,
             } => {
                 layout_columns::layout(
                     &mut allocator,
@@ -371,6 +373,7 @@ pub fn layout_document(
                     &section.design_attrs,
                     *count,
                     *gutter,
+                    column_label.as_deref(),
                     primary_font_id,
                     registry,
                 )?;
@@ -396,6 +399,7 @@ pub fn layout_document(
             proof_model::LayoutType::StyleComparison {
                 arrangement,
                 overflow,
+                spacing,
             } => {
                 // Build resolved style variants
                 let style_variants = resolve_style_variants(section, font_ids);
@@ -406,6 +410,7 @@ pub fn layout_document(
                     &section.design_attrs,
                     arrangement,
                     overflow,
+                    *spacing,
                     &style_variants,
                     registry,
                 )?;

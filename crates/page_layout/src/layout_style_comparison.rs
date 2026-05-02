@@ -6,7 +6,7 @@
 
 use content_resolver::ResolvedContent;
 use font_registry::{FontId, FontRegistry};
-use layout_ir::{Color, DrawCommand, StrokeStyle};
+use layout_ir::{Color, DrawCommand};
 use proof_model::{ComparisonArrangement, ComparisonOverflow, DesignAttributes};
 use text_flow::{self, TextFlow};
 
@@ -16,9 +16,10 @@ use crate::{build_text_style, LayoutError, PageAllocator, ResolvedStyleVariant};
 pub fn layout(
     allocator: &mut PageAllocator,
     content: &ResolvedContent,
-    base_design_attrs: &DesignAttributes,
+    _base_design_attrs: &DesignAttributes,
     arrangement: &ComparisonArrangement,
     overflow: &ComparisonOverflow,
+    spacing: f32,
     variants: &[ResolvedStyleVariant],
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
@@ -36,10 +37,10 @@ pub fn layout(
 
     match arrangement {
         ComparisonArrangement::Columns => {
-            layout_columns(allocator, &text, overflow, variants, registry)
+            layout_columns(allocator, &text, overflow, spacing, variants, registry)
         }
         ComparisonArrangement::Rows => {
-            layout_rows(allocator, &text, overflow, variants, registry)
+            layout_rows(allocator, &text, overflow, spacing, variants, registry)
         }
     }
 }
@@ -49,11 +50,12 @@ fn layout_columns(
     allocator: &mut PageAllocator,
     text: &str,
     overflow: &ComparisonOverflow,
+    spacing: f32,
     variants: &[ResolvedStyleVariant],
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
     let num_cols = variants.len();
-    let gutter = 12.0;
+    let gutter = spacing;
     let total_gutter = gutter * (num_cols - 1) as f32;
     let col_width = (allocator.body_width() - total_gutter) / num_cols as f32;
 
@@ -112,15 +114,6 @@ fn layout_columns_truncate(
     let body_left = allocator.body_left();
     let available = allocator.remaining_height();
 
-    for i in 1..flows.len() {
-        let x = body_left + i as f32 * (col_width + gutter) - gutter / 2.0;
-        allocator.push_command(DrawCommand::Line {
-            x1: x, y1: allocator.cursor_y(),
-            x2: x, y2: allocator.cursor_y() + available,
-            stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
-        });
-    }
-
     for (i, flow) in flows.iter_mut().enumerate() {
         let col_x = body_left + i as f32 * (col_width + gutter);
         let (lines, _) = flow.consume_into(available);
@@ -154,15 +147,6 @@ fn layout_columns_synced(
         let available = allocator.remaining_height();
         if available <= 0.0 { allocator.new_page(); continue; }
 
-        for i in 1..flows.len() {
-            let x = body_left + i as f32 * (col_width + gutter) - gutter / 2.0;
-            allocator.push_command(DrawCommand::Line {
-                x1: x, y1: allocator.cursor_y(),
-                x2: x, y2: allocator.cursor_y() + available,
-                stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
-            });
-        }
-
         let results = text_flow::sync_consume(flows, available);
 
         let mut max_height: f32 = 0.0;
@@ -191,11 +175,11 @@ fn layout_rows(
     allocator: &mut PageAllocator,
     text: &str,
     overflow: &ComparisonOverflow,
+    spacing: f32,
     variants: &[ResolvedStyleVariant],
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
     let body_width = allocator.body_width();
-    let row_spacing = 16.0;
 
     for (i, variant) in variants.iter().enumerate() {
         let label = variant.label.clone().unwrap_or_else(|| {
@@ -213,13 +197,6 @@ fn layout_rows(
             color: Color::gray(0.4),
         });
         allocator.advance(12.0);
-
-        allocator.push_command(DrawCommand::Line {
-            x1: allocator.body_left(), y1: allocator.cursor_y(),
-            x2: allocator.body_left() + body_width, y2: allocator.cursor_y(),
-            stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
-        });
-        allocator.advance(4.0);
 
         let style = build_text_style(&variant.design_attrs, variant.font_id);
         let font_size = variant.design_attrs.font_size;
@@ -257,7 +234,7 @@ fn layout_rows(
             }
         }
 
-        allocator.advance(row_spacing);
+        allocator.advance(spacing);
     }
 
     Ok(())

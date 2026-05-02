@@ -1,10 +1,10 @@
-//! Column layout — multi-column text flow with per-column headers.
+//! Column layout — multi-column text flow with optional column labels.
 
 use content_resolver::ResolvedContent;
 use font_registry::{FontId, FontRegistry};
-use layout_ir::{Color, DrawCommand, StrokeStyle};
+use layout_ir::{Color, DrawCommand};
 use proof_model::DesignAttributes;
-use text_flow::{TextFlow, TextStyle};
+use text_flow::TextFlow;
 
 use crate::{build_text_style, LayoutError, PageAllocator};
 
@@ -14,6 +14,7 @@ pub fn layout(
     design_attrs: &DesignAttributes,
     num_columns: usize,
     gutter: f32,
+    column_label: Option<&str>,
     font_id: FontId,
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
@@ -31,31 +32,36 @@ pub fn layout(
 
     let total_gutter = gutter * (num_columns - 1) as f32;
     let col_width = (allocator.body_width() - total_gutter) / num_columns as f32;
+    let label_height: f32 = if column_label.is_some() { 14.0 } else { 0.0 };
 
     let style = build_text_style(design_attrs, font_id);
     let mut flow = TextFlow::new(&text, style, col_width, registry)?;
 
     while flow.has_remaining() {
-        // Draw column separators
         let body_left = allocator.body_left();
-        let page_top = allocator.cursor_y();
-        let available_height = allocator.remaining_height();
+        let mut page_top = allocator.cursor_y();
+        let mut available_height = allocator.remaining_height();
 
-        if available_height <= 0.0 {
+        if available_height <= label_height {
             allocator.new_page();
             continue;
         }
 
-        // Draw gutter lines
-        for col in 1..num_columns {
-            let x = body_left + col as f32 * (col_width + gutter) - gutter / 2.0;
-            allocator.push_command(DrawCommand::Line {
-                x1: x,
-                y1: page_top,
-                x2: x,
-                y2: page_top + available_height,
-                stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
-            });
+        // Render column labels at the top of each column
+        if let Some(label) = column_label {
+            for col in 0..num_columns {
+                let col_x = body_left + col as f32 * (col_width + gutter);
+                allocator.push_command(DrawCommand::Label {
+                    text: label.to_string(),
+                    x: col_x,
+                    y: page_top + 9.0,
+                    size: 7.0,
+                    color: Color::gray(0.4),
+                });
+            }
+            allocator.advance(label_height);
+            page_top = allocator.cursor_y();
+            available_height -= label_height;
         }
 
         // Fill columns left to right
@@ -72,8 +78,10 @@ pub fn layout(
             }
 
             any_consumed = true;
-            let commands =
-                TextFlow::lines_to_commands(&lines, col_x, page_top, &text, design_attrs.font_size, &design_attrs.variations);
+            let commands = TextFlow::lines_to_commands(
+                &lines, col_x, page_top, &text,
+                design_attrs.font_size, &design_attrs.variations,
+            );
 
             for cmd in commands {
                 allocator.push_command(cmd);
@@ -84,7 +92,6 @@ pub fn layout(
             break;
         }
 
-        // Move to next page for remaining text
         if flow.has_remaining() {
             allocator.new_page();
         } else {
