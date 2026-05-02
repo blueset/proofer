@@ -64,7 +64,7 @@ fn layout_single_style(
     font_id: FontId,
     registry: &FontRegistry,
 ) -> Result<Vec<Page>, LayoutError> {
-    let mut allocator = PageAllocator::new(page_settings.clone());
+    let mut allocator = PageAllocator::new(page_settings.clone(), registry);
     let style = build_text_style(design_attrs, font_id);
     let max_width = allocator.body_width();
     let mut flow = TextFlow::new(text, style, max_width, registry)?;

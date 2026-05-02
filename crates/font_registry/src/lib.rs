@@ -64,18 +64,34 @@ struct FontEntry {
     metadata: FontMetadata,
 }
 
+/// Bundled Inter Variable font for UI labels, headers, and page numbers.
+pub static LABEL_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
+
 /// The font registry. Owns all loaded font data.
 pub struct FontRegistry {
     fonts: HashMap<FontId, FontEntry>,
     next_id: u32,
+    /// The font ID of the bundled label font, if loaded.
+    label_font_id: Option<FontId>,
 }
 
 impl FontRegistry {
     pub fn new() -> Self {
-        Self {
+        let mut reg = Self {
             fonts: HashMap::new(),
             next_id: 0,
+            label_font_id: None,
+        };
+        // Auto-load the bundled label font
+        if let Ok(id) = reg.load_bytes(Arc::new(LABEL_FONT_BYTES.to_vec()), 0, None) {
+            reg.label_font_id = Some(id);
         }
+        reg
+    }
+
+    /// Get the font ID of the bundled label font.
+    pub fn label_font_id(&self) -> Option<FontId> {
+        self.label_font_id
     }
 
     /// Load a font from a file path. Returns the FontId for the first face,
@@ -174,6 +190,25 @@ impl FontRegistry {
     pub fn font_ids(&self) -> Vec<FontId> {
         self.fonts.keys().copied().collect()
     }
+
+    /// Measure the width of a text string at a given font size.
+    /// Uses the charmap + glyph advances for a simple width estimate.
+    pub fn measure_text(&self, id: FontId, text: &str, font_size: f32) -> Result<f32, FontError> {
+        let font = self.font_ref(id)?;
+        let size = skrifa::prelude::Size::new(font_size);
+        let glyph_metrics = font.glyph_metrics(size, skrifa::prelude::LocationRef::default());
+        let charmap = font.charmap();
+
+        let mut width: f32 = 0.0;
+        for ch in text.chars() {
+            if let Some(gid) = charmap.map(ch) {
+                width += glyph_metrics.advance_width(gid).unwrap_or(0.0);
+            } else {
+                width += font_size * 0.3; // fallback for unmapped chars
+            }
+        }
+        Ok(width)
+    }
 }
 
 impl Default for FontRegistry {
@@ -232,6 +267,8 @@ mod tests {
     #[test]
     fn test_registry_creation() {
         let registry = FontRegistry::new();
-        assert!(registry.font_ids().is_empty());
+        // Label font is auto-loaded
+        assert!(registry.label_font_id().is_some());
+        assert!(!registry.font_ids().is_empty());
     }
 }

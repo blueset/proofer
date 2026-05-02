@@ -40,6 +40,10 @@ pub struct PageAllocator {
     cursor_y: f32,
     /// Current section header info for repeating on new pages.
     current_header: Option<HeaderContext>,
+    /// Label font ID for measuring header text.
+    label_font_id: Option<FontId>,
+    /// Cached label font data for measurement (Arc-shared with registry).
+    label_font_data: Option<std::sync::Arc<Vec<u8>>>,
 }
 
 /// Context for repeating section headers on new pages.
@@ -50,12 +54,18 @@ struct HeaderContext {
 }
 
 impl PageAllocator {
-    pub fn new(page_settings: PageSettings) -> Self {
+    pub fn new(page_settings: PageSettings, registry: &FontRegistry) -> Self {
+        let label_font_id = registry.label_font_id();
+        let label_font_data = label_font_id
+            .and_then(|id| registry.font_data(id).ok())
+            .map(|(data, _)| data);
         let mut allocator = Self {
             page_settings,
             pages: Vec::new(),
             cursor_y: 0.0,
             current_header: None,
+            label_font_id,
+            label_font_data,
         };
         allocator.new_page();
         allocator
@@ -102,6 +112,23 @@ impl PageAllocator {
         self.current_header = None;
     }
 
+    /// Measure label text width using the bundled label font.
+    fn measure_label(&self, text: &str, size: f32) -> f32 {
+        use skrifa::MetadataProvider;
+        if let Some(data) = &self.label_font_data {
+            if let Ok(font) = skrifa::FontRef::new(data) {
+                let s = skrifa::prelude::Size::new(size);
+                let gm = font.glyph_metrics(s, skrifa::prelude::LocationRef::default());
+                let cm = font.charmap();
+                return text.chars().map(|ch| {
+                    cm.map(ch).and_then(|gid| gm.advance_width(gid)).unwrap_or(size * 0.3)
+                }).sum();
+            }
+        }
+        // Fallback: approximate
+        text.len() as f32 * size * 0.5
+    }
+
     fn render_header_inner(
         &mut self,
         section_name: Option<String>,
@@ -114,6 +141,7 @@ impl PageAllocator {
         let left = self.body_left();
         let width = self.body_width();
 
+        // Section name — left aligned
         if let Some(name) = &section_name {
             self.push_command(DrawCommand::Label {
                 text: name.clone(),
@@ -124,20 +152,25 @@ impl PageAllocator {
             });
         }
 
+        // Font name — centered
         if config.show_font_name {
+            let text_width = self.measure_label(&font_name, header_size);
             self.push_command(DrawCommand::Label {
                 text: font_name,
-                x: left + width / 2.0 - 50.0,
+                x: left + (width - text_width) / 2.0,
                 y: header_y + header_size,
                 size: header_size,
                 color: Color::gray(0.4),
             });
         }
 
+        // Page number — right aligned
         if config.show_page_numbers {
+            let page_str = format!("{page_number}");
+            let text_width = self.measure_label(&page_str, header_size);
             self.push_command(DrawCommand::Label {
-                text: format!("{page_number}"),
-                x: left + width - 20.0,
+                text: page_str,
+                x: left + width - text_width,
                 y: header_y + header_size,
                 size: header_size,
                 color: Color::gray(0.4),
@@ -294,7 +327,7 @@ pub fn layout_document(
 ) -> Result<LayoutDocument, LayoutError> {
     let inspector = FontInspector::new(registry);
     let resolver = content_resolver::ContentResolver::new(FontInspector::new(registry));
-    let mut allocator = PageAllocator::new(doc.page_settings.clone());
+    let mut allocator = PageAllocator::new(doc.page_settings.clone(), registry);
 
     for (section_idx, section) in doc.sections.iter().enumerate() {
         if section.font_indices.is_empty() {
@@ -313,7 +346,7 @@ pub fn layout_document(
         // Get font name for headers
         let font_name = registry
             .metadata(primary_font_id)
-            .map(|m| format!("{} {}", m.family, m.style))
+            .map(|m| format!("{}", m.family))
             .unwrap_or_else(|_| "Unknown".to_string());
 
         // Begin each section on a new page (except the very first section

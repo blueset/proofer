@@ -45,8 +45,8 @@ pub fn render_to_pdf(
     let mut document = Document::new();
     let mut font_cache: HashMap<FontCacheKey, Font> = HashMap::new();
 
-    // Pre-load a system font for labels
-    let label_font = load_label_font();
+    // Load bundled label font into krilla
+    let label_font = Font::new(font_registry::LABEL_FONT_BYTES.to_vec().into(), 0);
 
     for page in &doc.pages {
         let settings = PageSettings::from_wh(page.width, page.height)
@@ -301,28 +301,6 @@ fn get_or_load_font(
 
     cache.insert(key, krilla_font.clone());
     Ok(krilla_font)
-}
-
-/// Try to load a system font for label rendering.
-fn load_label_font() -> Option<Font> {
-    // Try common system font paths
-    let candidates = [
-        r"C:\Windows\Fonts\arial.ttf",
-        r"C:\Windows\Fonts\segoeui.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/SFNSText.ttf",
-    ];
-
-    for path in &candidates {
-        if let Ok(data) = std::fs::read(path) {
-            if let Some(font) = Font::new(data.into(), 0) {
-                return Some(font);
-            }
-        }
-    }
-
-    None
 }
 
 fn color_to_paint(c: Color) -> rgb::Color {
