@@ -19,11 +19,11 @@ use crate::{LayoutError, PageAllocator};
 
 // ── Colors (subtle, non-distracting) ────────────────────────────────
 
-const CELL_BORDER: Color = Color::LIGHT_GRAY;
 const METRIC_BASELINE: Color = Color { r: 0.75, g: 0.75, b: 0.75, a: 1.0 };
 const METRIC_LINES: Color = Color { r: 0.82, g: 0.82, b: 0.82, a: 1.0 };
 const LABEL_COLOR: Color = Color { r: 0.5, g: 0.5, b: 0.5, a: 1.0 };
 const LABEL_SIZE: f32 = 5.0;
+const ROW_GAP: f32 = 8.0;
 
 // ── Per-glyph computed metrics ──────────────────────────────────────
 
@@ -157,7 +157,7 @@ pub fn layout(
     let descent = -global_metrics.descender * scale; // positive value
     let cap_height = global_metrics.cap_height.map(|h| h * scale);
     let x_height = global_metrics.x_height.map(|h| h * scale);
-    let label_height = if show_names { LABEL_SIZE + 6.0 } else { 0.0 };
+    let label_height = if show_names { LABEL_SIZE + 2.0 } else { 0.0 };
 
     let cells = compute_cell_data(&glyphs, font_id, font_size, &inspector, registry);
 
@@ -210,19 +210,23 @@ fn layout_grid(
     let actual_cell_width = body_width / cols as f32;
     let content_area_w = actual_cell_width - padding * 2.0;
 
+    // Fixed baseline offset for uniform row alignment
+    let max_top_extent = cells.iter()
+        .map(|c| c.ink_top.max(ascent))
+        .fold(0.0_f32, f32::max);
+
     let mut glyph_idx = 0;
     while glyph_idx < cells.len() {
-        allocator.ensure_space(cell_height);
+        allocator.ensure_space(cell_height + ROW_GAP);
         let row_y = allocator.cursor_y();
         let row_end = (glyph_idx + cols).min(cells.len());
+
+        // All glyphs in the row share the same baseline
+        let baseline_y = row_y + padding + max_top_extent;
 
         for col in 0..(row_end - glyph_idx) {
             let cell = &cells[glyph_idx + col];
             let cell_x = allocator.body_left() + col as f32 * actual_cell_width;
-
-            // Baseline position: top padding + ascent (or more if glyph exceeds)
-            let top_extent = cell.ink_top.max(ascent);
-            let baseline_y = row_y + padding + top_extent;
 
             // Glyph origin x: center the advance width in the content area
             let origin_x = cell_x + padding + (content_area_w - cell.advance) / 2.0;
@@ -236,7 +240,7 @@ fn layout_grid(
         }
 
         glyph_idx = row_end;
-        allocator.advance(cell_height);
+        allocator.advance(cell_height + ROW_GAP);
     }
 
     Ok(())
@@ -290,17 +294,21 @@ fn layout_compact(
             cell_idx += 1;
         }
 
-        allocator.ensure_space(row_height);
+        allocator.ensure_space(row_height + ROW_GAP);
         let row_y = allocator.cursor_y();
         let mut x = allocator.body_left();
+
+        // Compute max top extent for this row for baseline alignment
+        let max_top_extent = row_indices.iter()
+            .map(|&idx| cells[idx].ink_top.max(ascent))
+            .fold(0.0_f32, f32::max);
+        let baseline_y = row_y + padding + max_top_extent;
 
         for &idx in &row_indices {
             let cell = &cells[idx];
             let (cell_w, _) = cell_dims[idx];
 
             let content_area_w = cell_w - padding * 2.0;
-            let top_extent = cell.ink_top.max(ascent);
-            let baseline_y = row_y + padding + top_extent;
             let origin_x = x + padding + (content_area_w - cell.advance) / 2.0;
 
             render_cell(
@@ -313,7 +321,7 @@ fn layout_compact(
             x += cell_w;
         }
 
-        allocator.advance(row_height);
+        allocator.advance(row_height + ROW_GAP);
     }
 
     Ok(())
@@ -342,16 +350,6 @@ fn render_cell(
     label_height: f32,
     _padding: f32,
 ) {
-    // Cell border
-    allocator.push_command(DrawCommand::Rect {
-        x: cell_x,
-        y: cell_y,
-        w: cell_w,
-        h: cell_h,
-        fill: None,
-        stroke: Some(StrokeStyle::hairline(CELL_BORDER)),
-    });
-
     // Metric lines (all subtle)
     if show_metrics {
         let stroke_metric = StrokeStyle::new(0.25, METRIC_LINES);

@@ -123,21 +123,30 @@ impl<'a> FontInspector<'a> {
             });
         }
 
+        // Try to read post table for glyph names
+        let post = font.post().ok();
+
         let mut glyphs = Vec::with_capacity(glyph_count as usize);
         for gid in 0..glyph_count {
             let codepoint = reverse_cmap.get(&gid).copied();
-            let name = if gid == 0 {
-                Some(".notdef".to_string())
-            } else {
-                codepoint.map(|c| {
-                    // Use Unicode name-style label
-                    if c.is_ascii_graphic() {
-                        c.to_string()
-                    } else {
-                        format!("U+{:04X}", c as u32)
-                    }
+
+            // Priority: post table name → codepoint-derived name → GID fallback
+            let name = post
+                .as_ref()
+                .and_then(|p| {
+                    p.glyph_name(skrifa::GlyphId16::new(gid as u16))
+                        .map(|s| s.to_string())
                 })
-            };
+                .or_else(|| {
+                    codepoint.map(|c| {
+                        if c.is_ascii_graphic() {
+                            c.to_string()
+                        } else {
+                            format!("U+{:04X}", c as u32)
+                        }
+                    })
+                });
+
             glyphs.push(GlyphInfo {
                 glyph_id: gid,
                 codepoint,
