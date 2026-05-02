@@ -8,7 +8,7 @@ use content_resolver::ResolvedContent;
 use font_registry::{FontId, FontRegistry};
 use layout_ir::{Color, DrawCommand};
 use proof_model::{ComparisonArrangement, ComparisonOverflow, DesignAttributes};
-use text_flow::{self, TextFlow};
+use text_flow::TextFlow;
 
 use crate::{build_text_style, LayoutError, PageAllocator, ResolvedStyleVariant};
 
@@ -96,7 +96,7 @@ fn layout_columns(
             layout_columns_truncate(allocator, &mut flows, text, col_width, gutter, variants)?;
         }
         ComparisonOverflow::Flow => {
-            layout_columns_synced(allocator, &mut flows, text, col_width, gutter, variants)?;
+            layout_columns_flow(allocator, &mut flows, text, col_width, gutter, variants)?;
         }
     }
 
@@ -133,7 +133,10 @@ fn layout_columns_truncate(
     Ok(())
 }
 
-fn layout_columns_synced(
+/// Independent flow mode: each column flows independently across pages.
+/// Columns that finish early leave empty space on subsequent pages.
+/// When ALL columns are done, the section is complete.
+fn layout_columns_flow(
     allocator: &mut PageAllocator,
     flows: &mut [TextFlow],
     text: &str,
@@ -145,26 +148,50 @@ fn layout_columns_synced(
 
     while flows.iter().any(|f| f.has_remaining()) {
         let available = allocator.remaining_height();
-        if available <= 0.0 { allocator.new_page(); continue; }
+        if available <= 0.0 {
+            allocator.new_page();
+            continue;
+        }
 
-        let results = text_flow::sync_consume(flows, available);
-
+        // Each column consumes independently into the available height
         let mut max_height: f32 = 0.0;
-        for (i, lines) in results.iter().enumerate() {
+        for (i, flow) in flows.iter_mut().enumerate() {
+            if !flow.has_remaining() {
+                continue;
+            }
+
             let col_x = body_left + i as f32 * (col_width + gutter);
             let col_y = allocator.cursor_y();
+            let (lines, _) = flow.consume_into(available);
+
+            if lines.is_empty() {
+                continue;
+            }
+
             let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
             max_height = max_height.max(height);
 
-            if !lines.is_empty() {
-                let font_size = variants[i].design_attrs.font_size;
-                let commands = TextFlow::lines_to_commands(lines, col_x, col_y, text, font_size, &variants[i].design_attrs.variations);
-                for cmd in commands { allocator.push_command(cmd); }
+            let font_size = variants[i].design_attrs.font_size;
+            let commands = TextFlow::lines_to_commands(
+                &lines, col_x, col_y, text, font_size,
+                &variants[i].design_attrs.variations,
+            );
+            for cmd in commands {
+                allocator.push_command(cmd);
             }
         }
 
-        if max_height <= 0.0 { break; }
+        if max_height <= 0.0 {
+            break;
+        }
+
         allocator.advance(max_height);
+
+        // If any column still has remaining text, go to next page
+        // so all columns get a fresh page together
+        if flows.iter().any(|f| f.has_remaining()) {
+            allocator.new_page();
+        }
     }
 
     Ok(())
