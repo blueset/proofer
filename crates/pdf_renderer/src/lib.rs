@@ -95,12 +95,12 @@ fn render_command(
 
             let krilla_font = get_or_load_font(*font_id, variations, registry, font_cache)?;
             let font_size = if *size > 0.0 { *size } else { 12.0 };
-
-            // Our glyphs have absolute (x, y) positions in points (from parley).
-            // krilla's draw_glyphs takes a start point + relative advances/offsets.
-            // KrillaGlyph fields are normalized: multiplied by font_size internally.
-            // So: normalized_value = point_value / font_size
             let start = Point::from_xy(glyphs[0].x, glyphs[0].y);
+
+            // Use outlined rendering when variations are present to avoid
+            // advance width mismatches between skrifa versions (parley's
+            // skrifa vs krilla's skrifa vs subsetter's rounding).
+            let use_outlined = !variations.is_empty();
 
             let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
             for (i, g) in glyphs.iter().enumerate() {
@@ -111,20 +111,17 @@ fn render_command(
                 };
                 let y_offset_pts = if i == 0 { 0.0 } else { g.y - glyphs[0].y };
 
-                // Text range: distribute text bytes across glyphs, ensuring
-                // ranges fall on char boundaries (critical for multi-byte UTF-8).
                 let text_len = text.len();
                 let raw_start = (i * text_len / glyphs.len().max(1)).min(text_len);
                 let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
-                // Snap to nearest char boundary
                 let range_start = snap_to_char_boundary(text, raw_start);
                 let range_end = snap_to_char_boundary(text, raw_end);
 
                 krilla_glyphs.push(KrillaGlyph::new(
                     GlyphId::new(g.glyph_id),
-                    x_advance_pts / font_size,  // normalized advance
-                    0.0,                         // x_offset already in start position
-                    y_offset_pts / font_size,    // normalized y offset
+                    x_advance_pts / font_size,
+                    0.0,
+                    y_offset_pts / font_size,
                     0.0,
                     range_start..range_end,
                     None,
@@ -137,13 +134,7 @@ fn render_command(
                 opacity: NormalizedF32::ONE,
             }));
             surface.set_stroke(None);
-            // Use outlined rendering when variations are present to avoid a
-            // krilla bug: the CID font /W table uses f32 advance widths from
-            // skrifa, but the subsetted hmtx table rounds to u16. This causes
-            // fractional-unit drift that accumulates across glyphs.
-            // Outlined mode renders glyphs as path commands, bypassing CID.
-            let outlined = !variations.is_empty();
-            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, outlined);
+            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, use_outlined);
         }
 
         DrawCommand::Line {

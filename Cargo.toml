@@ -19,17 +19,17 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# Font parsing & introspection (versions match krilla 0.6's internal skrifa)
-skrifa = "0.37"
-read-fonts = "0.35"
+# Font parsing & introspection
+skrifa = "0.42"
+read-fonts = "0.39"
 
 # Text layout
-parley = "0.4"
-fontique = "0.4"
+parley = "0.9"
+fontique = "0.9"
 swash = "0.2"
 
 # PDF output
-krilla = "0.6"
+krilla = "0.7"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

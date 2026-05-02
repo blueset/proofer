@@ -302,7 +302,8 @@ fn shape_with_parley(
 ) -> Result<Vec<ShapedLine>, TextFlowError> {
     use parley::FontContext;
     use parley::LayoutContext;
-    use parley::style::{FontStack, FontFeature, FontVariation, FontSettings};
+    use parley::style::{FontFamily, FontFeature, FontFeatures, FontVariation, FontVariations, LineHeight};
+    use parley::setting::Tag as ParleyTag;
 
     // Get font data
     let (font_data, _face_index) = registry.font_data(style.font_id)?;
@@ -333,10 +334,7 @@ fn shape_with_parley(
             let tag_bytes = tag.as_bytes();
             if tag_bytes.len() == 4 {
                 let arr: [u8; 4] = [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]];
-                Some(FontVariation {
-                    tag: swash::tag_from_bytes(&arr),
-                    value: *val,
-                })
+                Some(FontVariation::new(ParleyTag::new(&arr), *val))
             } else {
                 None
             }
@@ -351,10 +349,7 @@ fn shape_with_parley(
             let tag_bytes = tag.as_bytes();
             if tag_bytes.len() == 4 {
                 let arr: [u8; 4] = [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]];
-                Some(FontFeature {
-                    tag: swash::tag_from_bytes(&arr),
-                    value: *val as u16,
-                })
+                Some(FontFeature::new(ParleyTag::new(&arr), *val as u16))
             } else {
                 None
             }
@@ -364,24 +359,24 @@ fn shape_with_parley(
     // Build parley layout using ranged builder with individual style properties
     let mut layout_ctx: LayoutContext<[u8; 4]> = LayoutContext::new();
     let mut builder = layout_ctx.ranged_builder(&mut font_ctx, text, 1.0, false);
-    builder.push_default(parley::style::StyleProperty::FontStack(
-        FontStack::Source(std::borrow::Cow::Owned(family_name)),
+    builder.push_default(parley::style::StyleProperty::FontFamily(
+        FontFamily::Source(std::borrow::Cow::Owned(family_name)),
     ));
     builder.push_default(parley::style::StyleProperty::FontSize(style.font_size));
     builder.push_default(parley::style::StyleProperty::LetterSpacing(
         style.tracking * style.font_size,
     ));
     builder.push_default(parley::style::StyleProperty::LineHeight(
-        style.line_height.unwrap_or(1.2),
+        LineHeight::FontSizeRelative(style.line_height.unwrap_or(1.2)),
     ));
     if !var_settings.is_empty() {
         builder.push_default(parley::style::StyleProperty::FontVariations(
-            FontSettings::List(std::borrow::Cow::Owned(var_settings)),
+            FontVariations::List(std::borrow::Cow::Owned(var_settings)),
         ));
     }
     if !feat_settings.is_empty() {
         builder.push_default(parley::style::StyleProperty::FontFeatures(
-            FontSettings::List(std::borrow::Cow::Owned(feat_settings)),
+            FontFeatures::List(std::borrow::Cow::Owned(feat_settings)),
         ));
     }
     let mut layout = builder.build(text);
