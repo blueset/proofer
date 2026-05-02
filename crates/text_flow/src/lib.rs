@@ -295,9 +295,8 @@ fn shape_with_parley(
     use parley::LayoutContext;
     use parley::style::{FontStack, FontFeature, FontVariation, FontSettings};
 
-    // Get font data and metadata
-    let (font_data, face_index) = registry.font_data(style.font_id)?;
-    let font_meta = registry.metadata(style.font_id)?;
+    // Get font data
+    let (font_data, _face_index) = registry.font_data(style.font_id)?;
 
     // Create fontique collection and register our font
     let mut font_ctx = FontContext::new();
@@ -308,8 +307,14 @@ fn shape_with_parley(
         return Err(TextFlowError::Layout("failed to register font with fontique".into()));
     }
 
-    // Use the font's family name for the font stack
-    let family_name = font_meta.family.clone();
+    // Use fontique's own family name (from FamilyId) — this avoids name
+    // mismatches between skrifa's name table parsing and fontique's.
+    let family_id = registered[0].0;
+    let family_name = font_ctx
+        .collection
+        .family_name(family_id)
+        .ok_or_else(|| TextFlowError::Layout("fontique registered font but has no family name".into()))?
+        .to_string();
 
     // Build variation settings
     let var_settings: Vec<FontVariation> = style
