@@ -53,7 +53,7 @@ impl<'a> ContentResolver<'a> {
             }
 
             ContentSpec::AllGlyphs => {
-                let glyphs = self.inspector.enumerate_glyphs(font_id)?;
+                let glyphs = self.inspector.enumerate_all_glyphs(font_id)?;
                 if glyphs.is_empty() {
                     return Err(ResolverError::NoGlyphsMatched);
                 }

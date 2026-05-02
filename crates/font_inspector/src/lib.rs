@@ -102,6 +102,52 @@ impl<'a> FontInspector<'a> {
         Ok(glyphs)
     }
 
+    /// Enumerate ALL glyphs in the font (0..glyph_count), including
+    /// unencoded glyphs like alternates, components, and .notdef.
+    /// Populates codepoint via reverse cmap and name from post table or codepoint.
+    pub fn enumerate_all_glyphs(&self, font_id: FontId) -> Result<Vec<GlyphInfo>, InspectorError> {
+        use skrifa::raw::TableProvider;
+        use std::collections::HashMap;
+
+        let font = self.registry.font_ref(font_id)?;
+        let glyph_metrics = font.glyph_metrics(Size::unscaled(), LocationRef::default());
+        let glyph_count = glyph_metrics.glyph_count();
+
+        // Build reverse cmap: glyph_id → first codepoint
+        let charmap = font.charmap();
+        let mut reverse_cmap: HashMap<u32, char> = HashMap::new();
+        for (codepoint, glyph_id) in charmap.mappings() {
+            let gid = glyph_id.to_u32();
+            reverse_cmap.entry(gid).or_insert_with(|| {
+                char::from_u32(codepoint).unwrap_or('\u{FFFD}')
+            });
+        }
+
+        let mut glyphs = Vec::with_capacity(glyph_count as usize);
+        for gid in 0..glyph_count {
+            let codepoint = reverse_cmap.get(&gid).copied();
+            let name = if gid == 0 {
+                Some(".notdef".to_string())
+            } else {
+                codepoint.map(|c| {
+                    // Use Unicode name-style label
+                    if c.is_ascii_graphic() {
+                        c.to_string()
+                    } else {
+                        format!("U+{:04X}", c as u32)
+                    }
+                })
+            };
+            glyphs.push(GlyphInfo {
+                glyph_id: gid,
+                codepoint,
+                name,
+            });
+        }
+
+        Ok(glyphs)
+    }
+
     /// Get global font metrics.
     pub fn get_metrics(&self, font_id: FontId) -> Result<GlobalMetrics, InspectorError> {
         let font = self.registry.font_ref(font_id)?;
