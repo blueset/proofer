@@ -19,9 +19,9 @@ version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# Font parsing & introspection
-skrifa = "0.26"
-read-fonts = "0.26"
+# Font parsing & introspection (versions match krilla 0.6's internal skrifa)
+skrifa = "0.37"
+read-fonts = "0.35"
 
 # Text layout
 parley = "0.4"
