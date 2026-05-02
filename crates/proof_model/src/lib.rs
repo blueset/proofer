@@ -107,12 +107,30 @@ impl Default for ProofDocument {
     }
 }
 
+/// Page orientation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Orientation {
+    Portrait,
+    Landscape,
+}
+
+impl Default for Orientation {
+    fn default() -> Self {
+        Self::Landscape
+    }
+}
+
 /// Page dimensions and margins. Can be specified as a preset or custom values.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum PageSettings {
     /// A named preset (e.g., "letter", "a4").
-    Preset { preset: PagePreset },
+    Preset {
+        preset: PagePreset,
+        #[serde(default)]
+        orientation: Orientation,
+    },
     /// Custom dimensions in points.
     Custom {
         width: f32,
@@ -144,24 +162,36 @@ pub enum PagePreset {
 
 impl PageSettings {
     pub fn letter() -> Self {
-        PageSettings::Preset { preset: PagePreset::Letter }
+        PageSettings::Preset {
+            preset: PagePreset::Letter,
+            orientation: Orientation::default(),
+        }
     }
 
     pub fn a4() -> Self {
-        PageSettings::Preset { preset: PagePreset::A4 }
+        PageSettings::Preset {
+            preset: PagePreset::A4,
+            orientation: Orientation::default(),
+        }
     }
 
-    /// Resolve to concrete dimensions.
+    /// Resolve to concrete dimensions (orientation-aware).
     pub fn width(&self) -> f32 {
         match self {
-            PageSettings::Preset { preset } => preset.width(),
+            PageSettings::Preset { preset, orientation } => match orientation {
+                Orientation::Portrait => preset.short_edge(),
+                Orientation::Landscape => preset.long_edge(),
+            },
             PageSettings::Custom { width, .. } => *width,
         }
     }
 
     pub fn height(&self) -> f32 {
         match self {
-            PageSettings::Preset { preset } => preset.height(),
+            PageSettings::Preset { preset, orientation } => match orientation {
+                Orientation::Portrait => preset.long_edge(),
+                Orientation::Landscape => preset.short_edge(),
+            },
             PageSettings::Custom { height, .. } => *height,
         }
     }
@@ -206,21 +236,23 @@ impl PageSettings {
 }
 
 impl PagePreset {
-    pub fn width(self) -> f32 {
+    /// The shorter dimension (portrait width / landscape height).
+    pub fn short_edge(self) -> f32 {
         match self {
-            Self::Letter => 612.0,
+            Self::Letter => 612.0,   // 8.5"
             Self::A4 => 595.28,
             Self::A3 => 841.89,
-            Self::Tabloid => 792.0,
+            Self::Tabloid => 792.0,  // 11"
         }
     }
 
-    pub fn height(self) -> f32 {
+    /// The longer dimension (portrait height / landscape width).
+    pub fn long_edge(self) -> f32 {
         match self {
-            Self::Letter => 792.0,
+            Self::Letter => 792.0,   // 11"
             Self::A4 => 841.89,
             Self::A3 => 1190.55,
-            Self::Tabloid => 1224.0,
+            Self::Tabloid => 1224.0, // 17"
         }
     }
 }

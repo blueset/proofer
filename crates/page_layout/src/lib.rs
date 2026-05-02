@@ -38,6 +38,15 @@ pub struct PageAllocator {
     page_settings: PageSettings,
     pages: Vec<Page>,
     cursor_y: f32,
+    /// Current section header info for repeating on new pages.
+    current_header: Option<HeaderContext>,
+}
+
+/// Context for repeating section headers on new pages.
+struct HeaderContext {
+    section_name: Option<String>,
+    font_name: String,
+    header_config: proof_model::HeaderConfig,
 }
 
 impl PageAllocator {
@@ -46,16 +55,105 @@ impl PageAllocator {
             page_settings,
             pages: Vec::new(),
             cursor_y: 0.0,
+            current_header: None,
         };
         allocator.new_page();
         allocator
     }
 
-    /// Start a new page and reset cursor.
+    /// Start a new page and reset cursor. Renders the current section
+    /// header automatically if one is set.
     pub fn new_page(&mut self) {
         let page = Page::new(self.page_settings.width(), self.page_settings.height());
         self.pages.push(page);
         self.cursor_y = self.page_settings.margin_top();
+
+        // Render header on the new page if we have section context
+        if let Some(ctx) = &self.current_header {
+            if ctx.header_config.show_header {
+                let page_num = self.pages.len();
+                self.render_header_inner(
+                    ctx.section_name.clone(),
+                    ctx.font_name.clone(),
+                    ctx.header_config.clone(),
+                    page_num,
+                );
+            }
+        }
+    }
+
+    /// Set the current section header context. Call this at the start
+    /// of each section so that new pages get the right header.
+    pub fn set_section_header(
+        &mut self,
+        section_name: Option<String>,
+        font_name: String,
+        header_config: proof_model::HeaderConfig,
+    ) {
+        self.current_header = Some(HeaderContext {
+            section_name,
+            font_name,
+            header_config,
+        });
+    }
+
+    /// Clear the section header context.
+    pub fn clear_section_header(&mut self) {
+        self.current_header = None;
+    }
+
+    fn render_header_inner(
+        &mut self,
+        section_name: Option<String>,
+        font_name: String,
+        config: proof_model::HeaderConfig,
+        page_number: usize,
+    ) {
+        let header_size: f32 = 8.0;
+        let header_y = self.cursor_y;
+        let left = self.body_left();
+        let width = self.body_width();
+
+        if let Some(name) = &section_name {
+            self.push_command(DrawCommand::Label {
+                text: name.clone(),
+                x: left,
+                y: header_y + header_size,
+                size: header_size,
+                color: Color::gray(0.4),
+            });
+        }
+
+        if config.show_font_name {
+            self.push_command(DrawCommand::Label {
+                text: font_name,
+                x: left + width / 2.0 - 50.0,
+                y: header_y + header_size,
+                size: header_size,
+                color: Color::gray(0.4),
+            });
+        }
+
+        if config.show_page_numbers {
+            self.push_command(DrawCommand::Label {
+                text: format!("{page_number}"),
+                x: left + width - 20.0,
+                y: header_y + header_size,
+                size: header_size,
+                color: Color::gray(0.4),
+            });
+        }
+
+        let line_y = header_y + header_size + 4.0;
+        self.push_command(DrawCommand::Line {
+            x1: left,
+            y1: line_y,
+            x2: left + width,
+            y2: line_y,
+            stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
+        });
+
+        self.cursor_y += header_size + 12.0;
     }
 
     /// Get remaining height on current page.
@@ -116,79 +214,6 @@ impl PageAllocator {
         self.pages.push(page);
         self.cursor_y = self.page_settings.margin_top();
     }
-
-    /// Get the page settings.
-    pub fn page_settings(&self) -> &PageSettings {
-        &self.page_settings
-    }
-
-    /// Get current page index.
-    pub fn current_page_index(&self) -> usize {
-        self.pages.len().saturating_sub(1)
-    }
-}
-
-/// Render a section header.
-pub fn render_header(
-    allocator: &mut PageAllocator,
-    section: &Section,
-    font_name: &str,
-    page_number: usize,
-) {
-    let config = &section.header_config;
-    if !config.show_header {
-        return;
-    }
-
-    let header_size: f32 = 8.0;
-    let header_y = allocator.cursor_y();
-    let left = allocator.body_left();
-    let width = allocator.body_width();
-
-    // Section name on the left
-    if let Some(name) = &section.name {
-        allocator.push_command(DrawCommand::Label {
-            text: name.clone(),
-            x: left,
-            y: header_y + header_size,
-            size: header_size,
-            color: Color::gray(0.4),
-        });
-    }
-
-    // Font name in the center
-    if config.show_font_name {
-        allocator.push_command(DrawCommand::Label {
-            text: font_name.to_string(),
-            x: left + width / 2.0 - 50.0, // approximate centering
-            y: header_y + header_size,
-            size: header_size,
-            color: Color::gray(0.4),
-        });
-    }
-
-    // Page number on the right
-    if config.show_page_numbers {
-        allocator.push_command(DrawCommand::Label {
-            text: format!("{}", page_number),
-            x: left + width - 20.0,
-            y: header_y + header_size,
-            size: header_size,
-            color: Color::gray(0.4),
-        });
-    }
-
-    // Header separator line
-    let line_y = header_y + header_size + 4.0;
-    allocator.push_command(DrawCommand::Line {
-        x1: left,
-        y1: line_y,
-        x2: left + width,
-        y2: line_y,
-        stroke: StrokeStyle::hairline(Color::LIGHT_GRAY),
-    });
-
-    allocator.advance(header_size + 12.0); // header height + spacing
 }
 
 /// Build a TextStyle from section design attributes and a font ID.
@@ -291,13 +316,25 @@ pub fn layout_document(
             .map(|m| format!("{} {}", m.family, m.style))
             .unwrap_or_else(|_| "Unknown".to_string());
 
-        // Render header on first page
-        let page_num = allocator.current_page_index() + 1;
-        render_header(
-            &mut allocator,
-            section,
-            &font_name,
-            page_num,
+        // Begin each section on a new page (except the very first section
+        // which already starts on page 1)
+        if section_idx > 0 {
+            allocator.new_page();
+        }
+
+        // Set section header context so headers repeat on every new page
+        allocator.set_section_header(
+            section.name.clone(),
+            font_name.clone(),
+            section.header_config.clone(),
+        );
+
+        // Render header on this first page of the section
+        allocator.render_header_inner(
+            section.name.clone(),
+            font_name,
+            section.header_config.clone(),
+            allocator.pages.len(),
         );
 
         // Dispatch to the appropriate layout
