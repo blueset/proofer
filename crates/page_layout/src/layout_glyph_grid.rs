@@ -14,6 +14,7 @@ use font_inspector::{FontInspector, GlyphInfo};
 use font_registry::{FontId, FontRegistry};
 use layout_ir::{Color, DrawCommand, PositionedGlyph, StrokeStyle};
 use proof_model::{DesignAttributes, GlyphGridMode};
+use skrifa::MetadataProvider;
 
 use crate::{LayoutError, PageAllocator};
 
@@ -64,25 +65,40 @@ fn compute_cell_data(
     inspector: &FontInspector<'_>,
     registry: &FontRegistry,
 ) -> Vec<CellData> {
-    let scale = font_size
-        / inspector.get_metrics(font_id).map(|m| m.units_per_em as f32).unwrap_or(1000.0);
+    compute_cell_data_with_location(glyphs, font_id, font_size, skrifa::prelude::LocationRef::default(), registry)
+}
+
+fn compute_cell_data_with_location(
+    glyphs: &[GlyphInfo],
+    font_id: FontId,
+    font_size: f32,
+    location: skrifa::prelude::LocationRef<'_>,
+    registry: &FontRegistry,
+) -> Vec<CellData> {
+    use skrifa::MetadataProvider;
+
+    let font = match registry.font_ref(font_id) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+
+    let glyph_metrics = font.glyph_metrics(skrifa::prelude::Size::unscaled(), location);
+    let upm = font.metrics(skrifa::prelude::Size::unscaled(), location).units_per_em as f32;
+    let scale = font_size / upm;
     let label_font_id = registry.label_font_id();
 
     glyphs
         .iter()
         .map(|g| {
-            let gm = inspector
-                .get_glyph_metrics(font_id, g.glyph_id)
-                .unwrap_or(font_inspector::GlyphMetrics {
-                    advance_width: 0.0,
-                    lsb: 0.0,
-                    bbox: None,
-                });
+            let gid = skrifa::GlyphId::new(g.glyph_id);
+            let advance_raw = glyph_metrics.advance_width(gid).unwrap_or(0.0);
+            let lsb_raw = glyph_metrics.left_side_bearing(gid).unwrap_or(0.0);
+            let bbox = glyph_metrics.bounds(gid);
 
-            let advance = gm.advance_width * scale;
-            let lsb = gm.lsb * scale;
+            let advance = advance_raw * scale;
+            let lsb = lsb_raw * scale;
 
-            let (ink_left, ink_right, ink_top, ink_bottom) = if let Some(bbox) = gm.bbox {
+            let (ink_left, ink_right, ink_top, ink_bottom) = if let Some(bbox) = bbox {
                 (
                     (bbox.x_min * scale).min(0.0),
                     (bbox.x_max * scale).max(advance),
@@ -149,26 +165,39 @@ pub fn layout(
         return Ok(());
     }
 
-    let inspector = FontInspector::new(registry);
-    let global_metrics = inspector.get_metrics(font_id)?;
+    // Build variation location for variation-aware metrics
+    let font = registry.font_ref(font_id).map_err(|e| LayoutError::Font(e))?;
+    let var_settings: Vec<(&str, f32)> = design_attrs
+        .variations
+        .iter()
+        .map(|(tag, val)| (tag.as_str(), *val))
+        .collect();
+    let location = font.axes().location(var_settings.iter().copied());
+    let loc_ref: skrifa::prelude::LocationRef<'_> = (&location).into();
+
     let font_size = design_attrs.font_size;
-    let scale = font_size / global_metrics.units_per_em as f32;
-    let ascent = global_metrics.ascender * scale;
-    let descent = -global_metrics.descender * scale; // positive value
-    let cap_height = global_metrics.cap_height.map(|h| h * scale);
-    let x_height = global_metrics.x_height.map(|h| h * scale);
+    let size = skrifa::prelude::Size::new(font_size);
+    let metrics = font.metrics(skrifa::prelude::Size::unscaled(), loc_ref);
+    let scale = font_size / metrics.units_per_em as f32;
+    let ascent = metrics.ascent * scale;
+    let descent = -metrics.descent * scale;
+    let cap_height = metrics.cap_height.map(|h| h * scale);
+    let x_height = metrics.x_height.map(|h| h * scale);
     let label_height = if show_names { LABEL_SIZE + 2.0 } else { 0.0 };
 
-    let cells = compute_cell_data(&glyphs, font_id, font_size, &inspector, registry);
+    // Variation vec for DrawCommands
+    let var_vec: Vec<(String, f32)> = design_attrs.variations.iter().map(|(k, v)| (k.clone(), *v)).collect();
+
+    let cells = compute_cell_data_with_location(&glyphs, font_id, font_size, loc_ref, registry);
 
     match mode {
         GlyphGridMode::Grid => layout_grid(
             allocator, &cells, font_id, font_size, ascent, descent,
-            cap_height, x_height, show_metrics, show_names, label_height, cell_padding,
+            cap_height, x_height, show_metrics, show_names, label_height, cell_padding, &var_vec,
         ),
         GlyphGridMode::Compact => layout_compact(
             allocator, &cells, font_id, font_size, ascent, descent,
-            cap_height, x_height, show_metrics, show_names, label_height, cell_padding,
+            cap_height, x_height, show_metrics, show_names, label_height, cell_padding, &var_vec,
         ),
     }
 }
@@ -188,8 +217,8 @@ fn layout_grid(
     show_names: bool,
     label_height: f32,
     padding: f32,
+    variations: &[(String, f32)],
 ) -> Result<(), LayoutError> {
-    // Uniform cell size: max across all glyphs
     let mut max_content_w: f32 = 0.0;
     let mut max_content_h: f32 = 0.0;
     let mut max_label_w: f32 = 0.0;
@@ -235,7 +264,7 @@ fn layout_grid(
                 allocator, cell, cell_x, row_y, actual_cell_width, cell_height,
                 baseline_y, origin_x, font_id, font_size,
                 ascent, descent, cap_height, x_height,
-                show_metrics, show_names, label_height, padding,
+                show_metrics, show_names, label_height, padding, variations,
             );
         }
 
@@ -261,6 +290,7 @@ fn layout_compact(
     show_names: bool,
     label_height: f32,
     padding: f32,
+    variations: &[(String, f32)],
 ) -> Result<(), LayoutError> {
     let min_cell_width = font_size * 0.5;
     let body_width = allocator.body_width();
@@ -410,7 +440,7 @@ fn layout_compact(
                     allocator, cell, cell_x, row_y, cell_w, row.height,
                     baseline_y, origin_x, font_id, font_size,
                     ascent, descent, cap_height, x_height,
-                    show_metrics, show_names, label_height, padding,
+                    show_metrics, show_names, label_height, padding, variations,
                 );
             }
 
@@ -454,6 +484,7 @@ fn render_cell(
     show_names: bool,
     label_height: f32,
     _padding: f32,
+    variations: &[(String, f32)],
 ) {
     // Metric lines — only span the glyph's extent
     if show_metrics {
@@ -528,7 +559,7 @@ fn render_cell(
             y: baseline_y,
         }],
         text: cell.codepoint.map(|c| c.to_string()).unwrap_or_default(),
-        variations: vec![],
+        variations: variations.to_vec(),
     });
 
     // Label (centered below glyph area)
