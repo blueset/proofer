@@ -254,7 +254,7 @@ pub struct Section {
     pub layout: LayoutType,
     /// Content specification.
     pub content: ContentSpec,
-    /// Design attributes (size, tracking, features, etc.).
+    /// Base design attributes (size, tracking, features, etc.).
     #[serde(default)]
     pub design_attrs: DesignAttributes,
     /// Font indices into the document's font list.
@@ -262,6 +262,62 @@ pub struct Section {
     /// Header configuration.
     #[serde(default)]
     pub header_config: HeaderConfig,
+    /// Style variants for StyleComparison/Interleave layouts.
+    /// Each variant can override design_attrs and/or font_index.
+    /// If empty, the layout uses font_indices with the base design_attrs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub styles: Vec<StyleVariant>,
+}
+
+/// A style variant for comparison/interleave layouts.
+/// Overrides the section's base design_attrs and/or font.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StyleVariant {
+    /// Optional label for this style (shown in headers).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Font index override (into document font list).
+    /// If not set, uses the first entry from the section's font_indices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_index: Option<usize>,
+    /// Design attribute overrides. Only specified fields override the base.
+    #[serde(default)]
+    pub design_attrs: DesignAttributeOverrides,
+}
+
+/// Partial design attribute overrides for style variants.
+/// Any field set to Some overrides the section's base value.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct DesignAttributeOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracking: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kerning: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub features: Option<BTreeMap<String, u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variations: Option<BTreeMap<String, f32>>,
+}
+
+impl DesignAttributeOverrides {
+    /// Apply overrides to a base DesignAttributes, returning a new copy.
+    pub fn apply_to(&self, base: &DesignAttributes) -> DesignAttributes {
+        DesignAttributes {
+            font_size: self.font_size.unwrap_or(base.font_size),
+            line_height: self.line_height.or(base.line_height),
+            tracking: self.tracking.unwrap_or(base.tracking),
+            kerning: self.kerning.unwrap_or(base.kerning),
+            features: self.features.clone().unwrap_or_else(|| base.features.clone()),
+            language: self.language.clone().or_else(|| base.language.clone()),
+            variations: self.variations.clone().unwrap_or_else(|| base.variations.clone()),
+        }
+    }
 }
 
 /// Layout type determines how content is arranged on pages.
@@ -499,6 +555,7 @@ pub fn example_document() -> ProofDocument {
                 },
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             },
             Section {
                 name: Some("Waterfall".to_string()),
@@ -511,6 +568,7 @@ pub fn example_document() -> ProofDocument {
                 design_attrs: DesignAttributes::default(),
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             },
             Section {
                 name: Some("Glyph Grid".to_string()),
@@ -528,6 +586,7 @@ pub fn example_document() -> ProofDocument {
                 },
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             },
         ],
     }

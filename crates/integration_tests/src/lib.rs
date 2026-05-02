@@ -87,6 +87,7 @@ mod tests {
                     design_attrs: DesignAttributes::default(),
                     font_indices: vec![0],
                     header_config: HeaderConfig::default(),
+                    styles: vec![],
                 },
                 Section {
                     name: Some("Glyph Grid".to_string()),
@@ -103,6 +104,7 @@ mod tests {
                     },
                     font_indices: vec![0],
                     header_config: HeaderConfig::default(),
+                    styles: vec![],
                 },
             ],
         };
@@ -189,6 +191,7 @@ mod tests {
                 },
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -230,6 +233,7 @@ mod tests {
                 design_attrs: DesignAttributes::default(),
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -267,6 +271,7 @@ mod tests {
                 },
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -303,6 +308,7 @@ mod tests {
                 },
                 font_indices: vec![0],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -348,6 +354,7 @@ mod tests {
                 },
                 font_indices: vec![0, 1],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -395,6 +402,7 @@ mod tests {
                 },
                 font_indices: vec![0, 1],
                 header_config: HeaderConfig::default(),
+                styles: vec![],
             }],
         };
 
@@ -430,6 +438,7 @@ mod tests {
                     },
                     font_indices: vec![0],
                     header_config: HeaderConfig::default(),
+                    styles: vec![],
                 },
                 Section {
                     name: Some("Waterfall".to_string()),
@@ -442,6 +451,7 @@ mod tests {
                     design_attrs: DesignAttributes::default(),
                     font_indices: vec![0],
                     header_config: HeaderConfig::default(),
+                    styles: vec![],
                 },
             ],
         };

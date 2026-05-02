@@ -208,6 +208,59 @@ pub fn build_text_style(
     }
 }
 
+/// A resolved style variant with concrete font ID and design attributes.
+pub struct ResolvedStyleVariant {
+    pub font_id: FontId,
+    pub design_attrs: proof_model::DesignAttributes,
+    pub label: Option<String>,
+}
+
+/// Resolve style variants for a section.
+/// If the section has explicit `styles`, use those.
+/// Otherwise, create one variant per font_index with the base design_attrs.
+fn resolve_style_variants(
+    section: &proof_model::Section,
+    font_ids: &[FontId],
+) -> Vec<ResolvedStyleVariant> {
+    let default_font_id = section
+        .font_indices
+        .first()
+        .and_then(|&idx| font_ids.get(idx).copied())
+        .unwrap_or(FontId(0));
+
+    if !section.styles.is_empty() {
+        section
+            .styles
+            .iter()
+            .map(|variant| {
+                let font_id = variant
+                    .font_index
+                    .and_then(|idx| font_ids.get(idx).copied())
+                    .unwrap_or(default_font_id);
+                let design_attrs = variant.design_attrs.apply_to(&section.design_attrs);
+                ResolvedStyleVariant {
+                    font_id,
+                    design_attrs,
+                    label: variant.label.clone(),
+                }
+            })
+            .collect()
+    } else {
+        // Legacy: one variant per font_index
+        section
+            .font_indices
+            .iter()
+            .filter_map(|&idx| {
+                font_ids.get(idx).map(|&fid| ResolvedStyleVariant {
+                    font_id: fid,
+                    design_attrs: section.design_attrs.clone(),
+                    label: None,
+                })
+            })
+            .collect()
+    }
+}
+
 /// Lay out a complete proof document.
 pub fn layout_document(
     doc: &proof_model::ProofDocument,
@@ -305,12 +358,8 @@ pub fn layout_document(
                 arrangement,
                 overflow,
             } => {
-                // Collect all font IDs for this section
-                let style_font_ids: Vec<FontId> = section
-                    .font_indices
-                    .iter()
-                    .filter_map(|&idx| font_ids.get(idx).copied())
-                    .collect();
+                // Build resolved style variants
+                let style_variants = resolve_style_variants(section, font_ids);
 
                 layout_style_comparison::layout(
                     &mut allocator,
@@ -318,23 +367,19 @@ pub fn layout_document(
                     &section.design_attrs,
                     arrangement,
                     overflow,
-                    &style_font_ids,
+                    &style_variants,
                     registry,
                 )?;
             }
             proof_model::LayoutType::Interleave { mode } => {
-                let style_font_ids: Vec<FontId> = section
-                    .font_indices
-                    .iter()
-                    .filter_map(|&idx| font_ids.get(idx).copied())
-                    .collect();
+                let style_variants = resolve_style_variants(section, font_ids);
 
                 let interleaved_doc = layout_interleave::layout(
                     &doc.page_settings,
                     &content,
                     &section.design_attrs,
                     mode,
-                    &style_font_ids,
+                    &style_variants,
                     registry,
                 )?;
 

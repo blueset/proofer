@@ -151,6 +151,11 @@ impl TextFlow {
         self.cursor = 0;
     }
 
+    /// Get the font size.
+    pub fn font_size(&self) -> f32 {
+        self.style.font_size
+    }
+
     /// Get the text style.
     pub fn style(&self) -> &TextStyle {
         &self.style
@@ -167,6 +172,7 @@ impl TextFlow {
         x_offset: f32,
         y_start: f32,
         text: &str,
+        font_size: f32,
     ) -> Vec<DrawCommand> {
         let mut commands = Vec::new();
         let mut y = y_start;
@@ -193,7 +199,7 @@ impl TextFlow {
 
                 commands.push(DrawCommand::GlyphRun {
                     font_id: run.font_id,
-                    size: 0.0, // size is baked into glyph positions
+                    size: font_size,
                     glyphs: positioned,
                     text: run_text,
                 });

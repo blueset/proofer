@@ -12,18 +12,15 @@ use layout_ir::{LayoutDocument, Page};
 use proof_model::{DesignAttributes, InterleaveMode};
 use text_flow::TextFlow;
 
-use crate::{build_text_style, LayoutError, PageAllocator};
+use crate::{build_text_style, LayoutError, PageAllocator, ResolvedStyleVariant};
 
 /// Lay out interleaved styles.
-///
-/// This works by generating a complete sub-document for each style,
-/// then interleaving the resulting pages.
 pub fn layout(
     page_settings: &proof_model::PageSettings,
     content: &ResolvedContent,
-    design_attrs: &DesignAttributes,
+    _base_design_attrs: &DesignAttributes,
     mode: &InterleaveMode,
-    font_ids: &[FontId],
+    variants: &[ResolvedStyleVariant],
     registry: &FontRegistry,
 ) -> Result<LayoutDocument, LayoutError> {
     let text = match content {
@@ -34,15 +31,14 @@ pub fn layout(
             .collect::<String>(),
     };
 
-    if text.is_empty() || font_ids.is_empty() {
+    if text.is_empty() || variants.is_empty() {
         return Ok(LayoutDocument::new());
     }
 
-    // Generate a complete sub-layout for each style
-    let mut style_docs: Vec<Vec<Page>> = Vec::with_capacity(font_ids.len());
+    let mut style_docs: Vec<Vec<Page>> = Vec::with_capacity(variants.len());
 
-    for &font_id in font_ids {
-        let pages = layout_single_style(page_settings, &text, design_attrs, font_id, registry)?;
+    for variant in variants {
+        let pages = layout_single_style(page_settings, &text, &variant.design_attrs, variant.font_id, registry)?;
         style_docs.push(pages);
     }
 
@@ -106,6 +102,7 @@ fn layout_single_style(
             allocator.body_left(),
             allocator.cursor_y(),
             text,
+            design_attrs.font_size,
         );
 
         let total_height: f32 = lines.iter().map(|l| l.metrics.height()).sum();

@@ -86,50 +86,32 @@ fn render_command(
 
             let krilla_font = get_or_load_font(*font_id, registry, font_cache)?;
             let font_size = if *size > 0.0 { *size } else { 12.0 };
-            let upm = krilla_font.units_per_em() as f32;
 
-            // Build KrillaGlyphs with proper positioning
-            // Our glyphs store absolute (x, y) positions. We convert these into
-            // relative advances for krilla's draw_glyphs API which takes a start
-            // point and relative advances.
+            // Our glyphs have absolute (x, y) positions in points (from parley).
+            // krilla's draw_glyphs takes a start point + relative advances/offsets.
+            // KrillaGlyph fields are normalized: multiplied by font_size internally.
+            // So: normalized_value = point_value / font_size
             let start = Point::from_xy(glyphs[0].x, glyphs[0].y);
 
             let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
             for (i, g) in glyphs.iter().enumerate() {
-                // Compute x_advance: distance to next glyph (or 0 for last)
                 let x_advance_pts = if i + 1 < glyphs.len() {
                     glyphs[i + 1].x - g.x
                 } else {
                     0.0
                 };
-
-                // Compute offsets relative to the expected position
-                let x_offset_pts = if i == 0 {
-                    0.0
-                } else {
-                    // offset from where the cursor would be after previous advances
-                    let expected_x: f32 = glyphs[0].x
-                        + glyphs[..i]
-                            .windows(2)
-                            .map(|w| w[1].x - w[0].x)
-                            .sum::<f32>();
-                    g.x - expected_x
-                };
                 let y_offset_pts = if i == 0 { 0.0 } else { g.y - glyphs[0].y };
 
-                // Normalize by UPM (KrillaGlyph values are multiplied by font_size internally)
-                let norm = upm / font_size;
-
-                // Determine text range for this glyph
+                // Text range: distribute text bytes proportionally across glyphs
                 let text_len = text.len();
                 let range_start = (i * text_len / glyphs.len().max(1)).min(text_len);
                 let range_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
 
                 krilla_glyphs.push(KrillaGlyph::new(
                     GlyphId::new(g.glyph_id),
-                    x_advance_pts * norm / font_size,
-                    x_offset_pts * norm / font_size,
-                    y_offset_pts * norm / font_size,
+                    x_advance_pts / font_size,  // normalized advance
+                    0.0,                         // x_offset already in start position
+                    y_offset_pts / font_size,    // normalized y offset
                     0.0,
                     range_start..range_end,
                     None,
