@@ -53,10 +53,10 @@ pub struct TextStyle {
     pub line_height: Option<f32>,
     pub tracking: f32,
     pub kerning: bool,
-    pub features: Vec<(String, u32)>,
+    pub features: std::collections::BTreeMap<String, u32>,
     pub language: Option<String>,
-    /// Variation axis settings (tag string, value) for variable fonts.
-    pub variations: Vec<(String, f32)>,
+    /// Variation axis settings: tag → value.
+    pub variations: std::collections::BTreeMap<String, f32>,
 }
 
 /// A text flow represents shaped text that can be consumed line by line.

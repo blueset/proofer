@@ -142,9 +142,9 @@ mod tests {
             line_height: None,
             tracking: 0.0,
             kerning: true,
-            features: vec![],
+            features: std::collections::BTreeMap::new(),
             language: None,
-            variations: vec![],
+            variations: std::collections::BTreeMap::new(),
         };
 
         let mut flow =

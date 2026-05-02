@@ -1,0 +1,20 @@
+[package]
+name = "proofer-cli"
+description = "CLI tool for generating font proof PDFs"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "proofer"
+path = "src/main.rs"
+
+[dependencies]
+font_registry = { workspace = true }
+font_inspector = { workspace = true }
+proof_model = { workspace = true }
+page_layout = { workspace = true }
+pdf_renderer = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }

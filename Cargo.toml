@@ -9,6 +9,7 @@ members = [
     "crates/page_layout",
     "crates/pdf_renderer",
     "crates/integration_tests",
+    "crates/proofer-cli",
 ]
 resolver = "2"
 
@@ -33,6 +34,8 @@ krilla = "0.6"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
+schemars = "0.8"
 
 # Unicode
 unicode-script = "0.5"
@@ -40,6 +43,9 @@ unicode-script = "0.5"
 # Utilities
 thiserror = "2"
 bitflags = "2"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
 
 # Internal crates
 layout_ir = { path = "crates/layout_ir" }

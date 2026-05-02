@@ -53,14 +53,14 @@ impl PageAllocator {
 
     /// Start a new page and reset cursor.
     pub fn new_page(&mut self) {
-        let page = Page::new(self.page_settings.width, self.page_settings.height);
+        let page = Page::new(self.page_settings.width(), self.page_settings.height());
         self.pages.push(page);
-        self.cursor_y = self.page_settings.margin_top;
+        self.cursor_y = self.page_settings.margin_top();
     }
 
     /// Get remaining height on current page.
     pub fn remaining_height(&self) -> f32 {
-        self.page_settings.height - self.page_settings.margin_bottom - self.cursor_y
+        self.page_settings.height() - self.page_settings.margin_bottom() - self.cursor_y
     }
 
     /// Advance the cursor by a given amount.
@@ -75,7 +75,7 @@ impl PageAllocator {
 
     /// Get page body left X.
     pub fn body_left(&self) -> f32 {
-        self.page_settings.margin_left
+        self.page_settings.margin_left()
     }
 
     /// Get page body width.
@@ -114,7 +114,7 @@ impl PageAllocator {
     /// Push a pre-built page (e.g., from interleave layout).
     pub fn push_page(&mut self, page: Page) {
         self.pages.push(page);
-        self.cursor_y = self.page_settings.margin_top;
+        self.cursor_y = self.page_settings.margin_top();
     }
 
     /// Get the page settings.
