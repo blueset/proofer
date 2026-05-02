@@ -47,44 +47,53 @@ pub fn layout(
             continue;
         }
 
-        // Render column labels at the top of each column
-        if let Some(label) = column_label {
-            for col in 0..num_columns {
-                let col_x = body_left + col as f32 * (col_width + gutter);
-                allocator.push_command(DrawCommand::Label {
-                    text: label.to_string(),
-                    x: col_x,
-                    y: page_top + 9.0,
-                    size: 7.0,
-                    color: Color::gray(0.4),
-                });
-            }
-            allocator.advance(label_height);
-            page_top = allocator.cursor_y();
-            available_height -= label_height;
-        }
+        // Reserve space for labels (rendered after we know which columns have text)
+        let content_top = if column_label.is_some() {
+            page_top + label_height
+        } else {
+            page_top
+        };
+        let content_height = available_height - if column_label.is_some() { label_height } else { 0.0 };
 
-        // Fill columns left to right
+        // Fill columns left to right, collecting which columns got text
         let mut any_consumed = false;
+        let mut filled_columns: Vec<bool> = vec![false; num_columns];
         for col in 0..num_columns {
             if !flow.has_remaining() {
                 break;
             }
 
             let col_x = body_left + col as f32 * (col_width + gutter);
-            let (lines, _) = flow.consume_into(available_height);
+            let (lines, _) = flow.consume_into(content_height);
             if lines.is_empty() {
                 continue;
             }
 
+            filled_columns[col] = true;
             any_consumed = true;
             let commands = TextFlow::lines_to_commands(
-                &lines, col_x, page_top, &text,
+                &lines, col_x, content_top, &text,
                 design_attrs.font_size, &design_attrs.variations,
             );
 
             for cmd in commands {
                 allocator.push_command(cmd);
+            }
+        }
+
+        // Render labels only for columns that received text
+        if let Some(label) = column_label {
+            for col in 0..num_columns {
+                if filled_columns[col] {
+                    let col_x = body_left + col as f32 * (col_width + gutter);
+                    allocator.push_command(DrawCommand::Label {
+                        text: label.to_string(),
+                        x: col_x,
+                        y: page_top + 9.0,
+                        size: 7.0,
+                        color: Color::gray(0.4),
+                    });
+                }
             }
         }
 
