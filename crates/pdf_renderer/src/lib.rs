@@ -137,10 +137,12 @@ fn render_command(
                 opacity: NormalizedF32::ONE,
             }));
             surface.set_stroke(None);
-            // Use outlined rendering for single-glyph runs (glyph grid cells)
-            // to ensure metric lines and glyph shapes align exactly.
-            // Multi-glyph runs (text) use the standard CID text path.
-            let outlined = glyphs.len() == 1;
+            // Use outlined rendering when variations are present to avoid a
+            // krilla bug: the CID font /W table uses f32 advance widths from
+            // skrifa, but the subsetted hmtx table rounds to u16. This causes
+            // fractional-unit drift that accumulates across glyphs.
+            // Outlined mode renders glyphs as path commands, bypassing CID.
+            let outlined = !variations.is_empty();
             surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, outlined);
         }
 
