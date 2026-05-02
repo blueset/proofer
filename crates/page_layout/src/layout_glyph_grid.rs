@@ -201,6 +201,7 @@ fn layout_uniform_grid(
                     .codepoint
                     .map(|c| c.to_string())
                     .unwrap_or_default(),
+                variations: vec![],
             });
 
             // Label
@@ -337,6 +338,7 @@ fn layout_compact_grid(
                     y: baseline_y,
                 }],
                 text: cell.codepoint.map(|c| c.to_string()).unwrap_or_default(),
+                variations: vec![],
             });
 
             // Label

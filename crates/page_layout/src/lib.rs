@@ -317,25 +317,27 @@ pub fn layout_document(
             .unwrap_or_else(|_| "Unknown".to_string());
 
         // Begin each section on a new page (except the very first section
-        // which already starts on page 1)
-        if section_idx > 0 {
-            allocator.new_page();
-        }
-
-        // Set section header context so headers repeat on every new page
+        // which already starts on page 1).
+        // Set header context BEFORE new_page so the correct header renders.
         allocator.set_section_header(
             section.name.clone(),
             font_name.clone(),
             section.header_config.clone(),
         );
 
-        // Render header on this first page of the section
-        allocator.render_header_inner(
-            section.name.clone(),
-            font_name,
-            section.header_config.clone(),
-            allocator.pages.len(),
-        );
+        if section_idx > 0 {
+            allocator.new_page();
+        } else {
+            // First section: manually render header on page 1
+            // (new_page was already called in PageAllocator::new, before
+            // any header context was set)
+            allocator.render_header_inner(
+                section.name.clone(),
+                font_name,
+                section.header_config.clone(),
+                allocator.pages.len(),
+            );
+        }
 
         // Dispatch to the appropriate layout
         match &section.layout {

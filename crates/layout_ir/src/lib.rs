@@ -76,6 +76,9 @@ pub enum DrawCommand {
         glyphs: Vec<PositionedGlyph>,
         /// Original text for PDF ActualText (accessibility).
         text: String,
+        /// Variation axis settings for variable fonts: (tag, value).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        variations: Vec<(String, f32)>,
     },
 
     /// A straight line.

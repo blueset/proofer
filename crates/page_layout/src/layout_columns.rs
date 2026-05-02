@@ -73,7 +73,7 @@ pub fn layout(
 
             any_consumed = true;
             let commands =
-                TextFlow::lines_to_commands(&lines, col_x, page_top, &text, design_attrs.font_size);
+                TextFlow::lines_to_commands(&lines, col_x, page_top, &text, design_attrs.font_size, &design_attrs.variations);
 
             for cmd in commands {
                 allocator.push_command(cmd);

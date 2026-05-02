@@ -53,6 +53,7 @@ pub fn layout(
             allocator.cursor_y(),
             &text,
             design_attrs.font_size,
+            &design_attrs.variations,
         );
 
         let total_height: f32 = lines.iter().map(|l| l.metrics.height()).sum();

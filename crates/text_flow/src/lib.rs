@@ -173,7 +173,9 @@ impl TextFlow {
         y_start: f32,
         text: &str,
         font_size: f32,
+        variations: &std::collections::BTreeMap<String, f32>,
     ) -> Vec<DrawCommand> {
+        let var_vec: Vec<(String, f32)> = variations.iter().map(|(k, v)| (k.clone(), *v)).collect();
         let mut commands = Vec::new();
         let mut y = y_start;
 
@@ -202,6 +204,7 @@ impl TextFlow {
                     size: font_size,
                     glyphs: positioned,
                     text: run_text,
+                    variations: var_vec.clone(),
                 });
             }
 

@@ -128,7 +128,7 @@ fn layout_columns_truncate(
 
         let clip_y = allocator.cursor_y();
         let font_size = variants[i].design_attrs.font_size;
-        let commands = TextFlow::lines_to_commands(&lines, col_x, clip_y, text, font_size);
+        let commands = TextFlow::lines_to_commands(&lines, col_x, clip_y, text, font_size, &variants[i].design_attrs.variations);
 
         allocator.push_command(DrawCommand::Clip {
             x: col_x, y: clip_y, w: col_width, h: available,
@@ -174,7 +174,7 @@ fn layout_columns_synced(
 
             if !lines.is_empty() {
                 let font_size = variants[i].design_attrs.font_size;
-                let commands = TextFlow::lines_to_commands(lines, col_x, col_y, text, font_size);
+                let commands = TextFlow::lines_to_commands(lines, col_x, col_y, text, font_size, &variants[i].design_attrs.variations);
                 for cmd in commands { allocator.push_command(cmd); }
             }
         }
@@ -231,7 +231,7 @@ fn layout_rows(
                 let (lines, _) = flow.consume_into(available);
                 if !lines.is_empty() {
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size, &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
                     allocator.push_command(DrawCommand::Clip {
@@ -248,7 +248,7 @@ fn layout_rows(
                     let (lines, _) = flow.consume_into(available);
                     if lines.is_empty() { allocator.new_page(); continue; }
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size, &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
                     for cmd in commands { allocator.push_command(cmd); }

@@ -6,7 +6,7 @@ use krilla::geom::{PathBuilder, Point, Rect, Transform};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, Stroke};
-use krilla::text::{Font, GlyphId, KrillaGlyph, TextDirection};
+use krilla::text::{Font, GlyphId, KrillaGlyph, Tag, TextDirection};
 use krilla::Document;
 use layout_ir::{Color, DrawCommand, LayoutDocument};
 use std::collections::HashMap;
@@ -22,11 +22,19 @@ pub enum RenderError {
     FontNotLoaded(FontId),
 }
 
-/// A font ID key that also encodes "label font" vs "user font".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A font cache key encoding font ID + variation location.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum FontCacheKey {
-    User(FontId),
+    User(FontId, Vec<(String, i32)>), // i32 = f32 bits for hashing
     Label,
+}
+
+fn variation_cache_key(font_id: FontId, variations: &[(String, f32)]) -> FontCacheKey {
+    let key: Vec<(String, i32)> = variations
+        .iter()
+        .map(|(tag, val)| (tag.clone(), val.to_bits() as i32))
+        .collect();
+    FontCacheKey::User(font_id, key)
 }
 
 /// Render a LayoutDocument to PDF bytes.
@@ -79,12 +87,13 @@ fn render_command(
             size,
             glyphs,
             text,
+            variations,
         } => {
             if glyphs.is_empty() {
                 return Ok(());
             }
 
-            let krilla_font = get_or_load_font(*font_id, registry, font_cache)?;
+            let krilla_font = get_or_load_font(*font_id, variations, registry, font_cache)?;
             let font_size = if *size > 0.0 { *size } else { 12.0 };
 
             // Our glyphs have absolute (x, y) positions in points (from parley).
@@ -255,18 +264,36 @@ fn render_command(
 
 fn get_or_load_font(
     font_id: FontId,
+    variations: &[(String, f32)],
     registry: &FontRegistry,
     cache: &mut HashMap<FontCacheKey, Font>,
 ) -> Result<Font, RenderError> {
-    let key = FontCacheKey::User(font_id);
+    let key = variation_cache_key(font_id, variations);
     if let Some(font) = cache.get(&key) {
         return Ok(font.clone());
     }
 
     let (data, face_index) = registry.font_data(font_id)?;
     let data_vec: Vec<u8> = (*data).clone();
-    let krilla_font = Font::new(data_vec.into(), face_index)
-        .ok_or_else(|| RenderError::Krilla("failed to load font in krilla".into()))?;
+
+    let krilla_font = if variations.is_empty() {
+        Font::new(data_vec.into(), face_index)
+    } else {
+        // Convert (String, f32) to (Tag, f32) for krilla
+        let var_coords: Vec<(Tag, f32)> = variations
+            .iter()
+            .filter_map(|(tag, val)| {
+                let bytes = tag.as_bytes();
+                if bytes.len() == 4 {
+                    Some((Tag::new(&[bytes[0], bytes[1], bytes[2], bytes[3]]), *val))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Font::new_variable(data_vec.into(), face_index, var_coords.as_slice())
+    }
+    .ok_or_else(|| RenderError::Krilla("failed to load font in krilla".into()))?;
 
     cache.insert(key, krilla_font.clone());
     Ok(krilla_font)
