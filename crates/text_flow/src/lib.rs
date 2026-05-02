@@ -356,6 +356,8 @@ fn shape_with_parley(
         })
         .collect();
 
+    let font = registry.font_ref(style.font_id)?;
+
     // Build parley layout using ranged builder with individual style properties
     let mut layout_ctx: LayoutContext<[u8; 4]> = LayoutContext::new();
     let mut builder = layout_ctx.ranged_builder(&mut font_ctx, text, 1.0, false);
@@ -392,6 +394,7 @@ fn shape_with_parley(
         for item in line.items() {
             if let parley::layout::PositionedLayoutItem::GlyphRun(glyph_run) = item {
                 let mut glyphs = Vec::new();
+                let text_range = glyph_run.run().text_range();
 
                 for g in glyph_run.positioned_glyphs() {
                     glyphs.push(PositionedGlyph {
@@ -401,7 +404,6 @@ fn shape_with_parley(
                     });
                 }
 
-                let text_range = glyph_run.run().text_range();
                 runs.push(ShapedRun {
                     font_id: style.font_id,
                     glyphs,

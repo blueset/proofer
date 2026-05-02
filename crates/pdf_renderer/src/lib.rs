@@ -97,44 +97,39 @@ fn render_command(
             let font_size = if *size > 0.0 { *size } else { 12.0 };
             let start = Point::from_xy(glyphs[0].x, glyphs[0].y);
 
-            // Use outlined rendering when variations are present to avoid
-            // advance width mismatches between skrifa versions (parley's
-            // skrifa vs krilla's skrifa vs subsetter's rounding).
-            let use_outlined = !variations.is_empty();
-
-            let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
-            for (i, g) in glyphs.iter().enumerate() {
-                let x_advance_pts = if i + 1 < glyphs.len() {
-                    glyphs[i + 1].x - g.x
-                } else {
-                    0.0
-                };
-                let y_offset_pts = if i == 0 { 0.0 } else { g.y - glyphs[0].y };
-
-                let text_len = text.len();
-                let raw_start = (i * text_len / glyphs.len().max(1)).min(text_len);
-                let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
-                let range_start = snap_to_char_boundary(text, raw_start);
-                let range_end = snap_to_char_boundary(text, raw_end);
-
-                krilla_glyphs.push(KrillaGlyph::new(
-                    GlyphId::new(g.glyph_id),
-                    x_advance_pts / font_size,
-                    0.0,
-                    y_offset_pts / font_size,
-                    0.0,
-                    range_start..range_end,
-                    None,
-                ));
-            }
-
             surface.set_fill(Some(Fill {
                 paint: rgb::Color::new(0, 0, 0).into(),
                 rule: FillRule::NonZero,
                 opacity: NormalizedF32::ONE,
             }));
             surface.set_stroke(None);
-            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, use_outlined);
+
+            if glyphs.len() == 1 {
+                // Single glyph (glyph grid): use outlined rendering for exact
+                // metric line alignment.
+                let krilla_glyph = KrillaGlyph::new(
+                    GlyphId::new(glyphs[0].glyph_id),
+                    0.0, 0.0, 0.0, 0.0,
+                    0..text.len(),
+                    None,
+                );
+                surface.draw_glyphs(
+                    start, &[krilla_glyph], krilla_font, text, font_size, true,
+                );
+            } else if !text.is_empty() {
+                // Multi-glyph text run: use draw_text so krilla handles
+                // glyph-level positioning with its own consistent skrifa.
+                // We only use parley for line breaking; within each run,
+                // krilla re-shapes the text to avoid skrifa version mismatches.
+                surface.draw_text(
+                    start,
+                    krilla_font,
+                    font_size,
+                    text,
+                    false,
+                    TextDirection::Auto,
+                );
+            }
         }
 
         DrawCommand::Line {
