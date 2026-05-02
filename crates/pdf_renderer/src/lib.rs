@@ -111,10 +111,14 @@ fn render_command(
                 };
                 let y_offset_pts = if i == 0 { 0.0 } else { g.y - glyphs[0].y };
 
-                // Text range: distribute text bytes proportionally across glyphs
+                // Text range: distribute text bytes across glyphs, ensuring
+                // ranges fall on char boundaries (critical for multi-byte UTF-8).
                 let text_len = text.len();
-                let range_start = (i * text_len / glyphs.len().max(1)).min(text_len);
-                let range_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
+                let raw_start = (i * text_len / glyphs.len().max(1)).min(text_len);
+                let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
+                // Snap to nearest char boundary
+                let range_start = snap_to_char_boundary(text, raw_start);
+                let range_end = snap_to_char_boundary(text, raw_end);
 
                 krilla_glyphs.push(KrillaGlyph::new(
                     GlyphId::new(g.glyph_id),
@@ -327,4 +331,20 @@ fn color_to_paint(c: Color) -> rgb::Color {
         (c.g * 255.0) as u8,
         (c.b * 255.0) as u8,
     )
+}
+
+/// Snap a byte index to the nearest valid char boundary in a UTF-8 string.
+fn snap_to_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    if s.is_char_boundary(index) {
+        return index;
+    }
+    // Walk backwards to find the start of the current character
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
