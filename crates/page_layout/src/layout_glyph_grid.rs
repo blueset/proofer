@@ -264,8 +264,9 @@ fn layout_compact(
 ) -> Result<(), LayoutError> {
     let min_cell_width = font_size * 0.5;
     let body_width = allocator.body_width();
+    let base_gap = font_size * 0.3; // minimum gap between cells
 
-    // Pre-compute per-cell dimensions
+    // Pre-compute per-cell natural dimensions
     let cell_dims: Vec<(f32, f32)> = cells
         .iter()
         .map(|cell| {
@@ -276,52 +277,156 @@ fn layout_compact(
         })
         .collect();
 
+    // First pass: bin-pack ALL cells into rows (with base_gap between cells)
+    struct RowInfo {
+        indices: Vec<usize>,
+        natural_width: f32, // sum of cell widths (no gaps)
+        height: f32,
+    }
+
+    let mut rows: Vec<RowInfo> = Vec::new();
     let mut cell_idx = 0;
     while cell_idx < cells.len() {
-        // Build a row
-        let mut row_indices = Vec::new();
+        let mut indices = Vec::new();
         let mut row_width = 0.0;
         let mut row_height: f32 = 0.0;
 
         while cell_idx < cells.len() {
             let (w, h) = cell_dims[cell_idx];
-            if row_width + w > body_width && !row_indices.is_empty() {
+            let needed = if indices.is_empty() { w } else { w + base_gap };
+            if row_width + needed > body_width && !indices.is_empty() {
                 break;
             }
-            row_indices.push(cell_idx);
-            row_width += w;
+            indices.push(cell_idx);
+            row_width += needed;
             row_height = row_height.max(h);
             cell_idx += 1;
         }
 
-        allocator.ensure_space(row_height + ROW_GAP);
-        let row_y = allocator.cursor_y();
-        let mut x = allocator.body_left();
+        let natural_width: f32 = indices.iter().map(|&i| cell_dims[i].0).sum();
+        rows.push(RowInfo { indices, natural_width, height: row_height });
+    }
 
-        // Compute max top extent for this row for baseline alignment
-        let max_top_extent = row_indices.iter()
-            .map(|&idx| cells[idx].ink_top.max(ascent))
-            .fold(0.0_f32, f32::max);
-        let baseline_y = row_y + padding + max_top_extent;
+    let total_rows = rows.len();
+    let is_single_line = total_rows == 1;
 
-        for &idx in &row_indices {
-            let cell = &cells[idx];
-            let (cell_w, _) = cell_dims[idx];
+    // Second pass: paginate rows and render with vertical centering per page
+    let mut row_idx = 0;
+    while row_idx < rows.len() {
+        // Collect rows that fit on this page
+        let available = allocator.remaining_height();
+        let mut page_rows: Vec<usize> = Vec::new();
+        let mut page_content_height: f32 = 0.0;
 
-            let content_area_w = cell_w - padding * 2.0;
-            let origin_x = x + padding + (content_area_w - cell.advance) / 2.0;
-
-            render_cell(
-                allocator, cell, x, row_y, cell_w, row_height,
-                baseline_y, origin_x, font_id, font_size,
-                ascent, descent, cap_height, x_height,
-                show_metrics, show_names, label_height, padding,
-            );
-
-            x += cell_w;
+        while row_idx < rows.len() {
+            let rh = rows[row_idx].height;
+            let needed = if page_rows.is_empty() { rh } else { rh + ROW_GAP };
+            if page_content_height + needed > available && !page_rows.is_empty() {
+                break;
+            }
+            page_rows.push(row_idx);
+            page_content_height += needed;
+            row_idx += 1;
         }
 
-        allocator.advance(row_height + ROW_GAP);
+        if page_rows.is_empty() {
+            allocator.new_page();
+            continue;
+        }
+
+        // Vertical centering: even space before first and after last row
+        let vertical_padding = (available - page_content_height).max(0.0) / 2.0;
+        allocator.advance(vertical_padding);
+
+        for (page_row_i, &ri) in page_rows.iter().enumerate() {
+            let row = &rows[ri];
+            let row_y = allocator.cursor_y();
+            let body_left = allocator.body_left();
+
+            // Baseline alignment for this row
+            let max_top_extent = row.indices.iter()
+                .map(|&idx| cells[idx].ink_top.max(ascent))
+                .fold(0.0_f32, f32::max);
+            let baseline_y = row_y + padding + max_top_extent;
+
+            let n = row.indices.len();
+
+            // Determine horizontal positioning
+            let (cell_positions, effective_cell_widths) = if is_single_line {
+                // Single line: center with uniform gap
+                let total_natural: f32 = row.indices.iter().map(|&i| cell_dims[i].0).sum();
+                let total_gaps = if n > 1 { (n - 1) as f32 * base_gap } else { 0.0 };
+                let total_with_gaps = total_natural + total_gaps;
+                let start_x = body_left + (body_width - total_with_gaps).max(0.0) / 2.0;
+
+                let mut positions = Vec::with_capacity(n);
+                let mut widths = Vec::with_capacity(n);
+                let mut x = start_x;
+                for (i, &idx) in row.indices.iter().enumerate() {
+                    positions.push(x);
+                    widths.push(cell_dims[idx].0);
+                    x += cell_dims[idx].0;
+                    if i + 1 < n { x += base_gap; }
+                }
+                (positions, widths)
+            } else if ri < rows.len() - 1 {
+                // Multi-line, not last row: justify (stretch gaps to fill body_width)
+                let extra_space = body_width - row.natural_width;
+                let gap = if n > 1 { extra_space / (n - 1) as f32 } else { 0.0 };
+
+                let mut positions = Vec::with_capacity(n);
+                let mut widths = Vec::with_capacity(n);
+                let mut x = body_left;
+                for (i, &idx) in row.indices.iter().enumerate() {
+                    positions.push(x);
+                    widths.push(cell_dims[idx].0);
+                    x += cell_dims[idx].0;
+                    if i + 1 < n { x += gap; }
+                }
+                (positions, widths)
+            } else {
+                // Last row of multi-line: left-aligned with base_gap
+                let mut positions = Vec::with_capacity(n);
+                let mut widths = Vec::with_capacity(n);
+                let mut x = body_left;
+                for (i, &idx) in row.indices.iter().enumerate() {
+                    positions.push(x);
+                    widths.push(cell_dims[idx].0);
+                    x += cell_dims[idx].0;
+                    if i + 1 < n { x += base_gap; }
+                }
+                (positions, widths)
+            };
+
+            // Render cells at computed positions
+            for (i, &idx) in row.indices.iter().enumerate() {
+                let cell = &cells[idx];
+                let cell_x = cell_positions[i];
+                let cell_w = effective_cell_widths[i];
+                let content_area_w = cell_w - padding * 2.0;
+                let origin_x = cell_x + padding + (content_area_w - cell.advance) / 2.0;
+
+                render_cell(
+                    allocator, cell, cell_x, row_y, cell_w, row.height,
+                    baseline_y, origin_x, font_id, font_size,
+                    ascent, descent, cap_height, x_height,
+                    show_metrics, show_names, label_height, padding,
+                );
+            }
+
+            allocator.advance(row.height);
+            if page_row_i + 1 < page_rows.len() {
+                allocator.advance(ROW_GAP);
+            }
+        }
+
+        // Advance past the bottom vertical padding
+        allocator.advance(vertical_padding);
+
+        // Start new page if more rows remain
+        if row_idx < rows.len() {
+            allocator.new_page();
+        }
     }
 
     Ok(())
@@ -350,15 +455,19 @@ fn render_cell(
     label_height: f32,
     _padding: f32,
 ) {
-    // Metric lines (all subtle)
+    // Metric lines — only span the glyph's extent
     if show_metrics {
         let stroke_metric = StrokeStyle::new(0.25, METRIC_LINES);
         let stroke_baseline = StrokeStyle::new(0.25, METRIC_BASELINE);
 
+        // Horizontal extent: from leftmost of (origin, ink_left) to rightmost of (origin+advance, ink_right)
+        let line_left = origin_x + cell.ink_left.min(0.0);
+        let line_right = (origin_x + cell.ink_right).max(origin_x + cell.advance);
+
         // Ascender
         let asc_y = baseline_y - ascent;
         allocator.push_command(DrawCommand::Line {
-            x1: cell_x, y1: asc_y, x2: cell_x + cell_w, y2: asc_y,
+            x1: line_left, y1: asc_y, x2: line_right, y2: asc_y,
             stroke: stroke_metric,
         });
 
@@ -366,7 +475,7 @@ fn render_cell(
         if let Some(ch) = cap_height {
             let ch_y = baseline_y - ch;
             allocator.push_command(DrawCommand::Line {
-                x1: cell_x, y1: ch_y, x2: cell_x + cell_w, y2: ch_y,
+                x1: line_left, y1: ch_y, x2: line_right, y2: ch_y,
                 stroke: stroke_metric,
             });
         }
@@ -375,21 +484,21 @@ fn render_cell(
         if let Some(xh) = x_height {
             let xh_y = baseline_y - xh;
             allocator.push_command(DrawCommand::Line {
-                x1: cell_x, y1: xh_y, x2: cell_x + cell_w, y2: xh_y,
+                x1: line_left, y1: xh_y, x2: line_right, y2: xh_y,
                 stroke: stroke_metric,
             });
         }
 
         // Baseline (slightly darker)
         allocator.push_command(DrawCommand::Line {
-            x1: cell_x, y1: baseline_y, x2: cell_x + cell_w, y2: baseline_y,
+            x1: line_left, y1: baseline_y, x2: line_right, y2: baseline_y,
             stroke: stroke_baseline,
         });
 
         // Descender
         let desc_y = baseline_y + descent;
         allocator.push_command(DrawCommand::Line {
-            x1: cell_x, y1: desc_y, x2: cell_x + cell_w, y2: desc_y,
+            x1: line_left, y1: desc_y, x2: line_right, y2: desc_y,
             stroke: stroke_metric,
         });
 
@@ -397,13 +506,11 @@ fn render_cell(
         let glyph_area_top = baseline_y - ascent - 2.0;
         let glyph_area_bottom = baseline_y + descent + 2.0;
 
-        // Left side bearing
         allocator.push_command(DrawCommand::Line {
             x1: origin_x, y1: glyph_area_top, x2: origin_x, y2: glyph_area_bottom,
             stroke: stroke_metric,
         });
 
-        // Right side bearing (at advance width)
         let rsb_x = origin_x + cell.advance;
         allocator.push_command(DrawCommand::Line {
             x1: rsb_x, y1: glyph_area_top, x2: rsb_x, y2: glyph_area_bottom,
