@@ -8,6 +8,7 @@ members = [
     "crates/text_flow",
     "crates/page_layout",
     "crates/pdf_renderer",
+    "crates/integration_tests",
 ]
 resolver = "2"
 

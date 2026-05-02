@@ -1,0 +1,15 @@
+[package]
+name = "integration_tests"
+description = "End-to-end integration tests for the font proofer"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+font_registry = { workspace = true }
+font_inspector = { workspace = true }
+proof_model = { workspace = true }
+content_resolver = { workspace = true }
+text_flow = { workspace = true }
+layout_ir = { workspace = true }
+page_layout = { workspace = true }
+pdf_renderer = { workspace = true }

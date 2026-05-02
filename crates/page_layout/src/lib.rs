@@ -5,7 +5,9 @@
 
 pub mod layout_columns;
 pub mod layout_glyph_grid;
+pub mod layout_interleave;
 pub mod layout_simple;
+pub mod layout_style_comparison;
 pub mod layout_waterfall;
 
 use font_inspector::FontInspector;
@@ -107,6 +109,12 @@ impl PageAllocator {
             doc.add_page(page);
         }
         doc
+    }
+
+    /// Push a pre-built page (e.g., from interleave layout).
+    pub fn push_page(&mut self, page: Page) {
+        self.pages.push(page);
+        self.cursor_y = self.page_settings.margin_top;
     }
 
     /// Get the page settings.
@@ -292,8 +300,50 @@ pub fn layout_document(
                     registry,
                 )?;
             }
-            _ => {
-                // Other layout types to be implemented
+            proof_model::LayoutType::StyleComparison {
+                arrangement,
+                overflow,
+            } => {
+                // Collect all font IDs for this section
+                let style_font_ids: Vec<FontId> = section
+                    .font_indices
+                    .iter()
+                    .filter_map(|&idx| font_ids.get(idx).copied())
+                    .collect();
+
+                layout_style_comparison::layout(
+                    &mut allocator,
+                    &content,
+                    &section.design_attrs,
+                    arrangement,
+                    overflow,
+                    &style_font_ids,
+                    registry,
+                )?;
+            }
+            proof_model::LayoutType::Interleave { mode } => {
+                let style_font_ids: Vec<FontId> = section
+                    .font_indices
+                    .iter()
+                    .filter_map(|&idx| font_ids.get(idx).copied())
+                    .collect();
+
+                let interleaved_doc = layout_interleave::layout(
+                    &doc.page_settings,
+                    &content,
+                    &section.design_attrs,
+                    mode,
+                    &style_font_ids,
+                    registry,
+                )?;
+
+                // Merge interleaved pages into the main document
+                for page in interleaved_doc.pages {
+                    allocator.push_page(page);
+                }
+            }
+            proof_model::LayoutType::ImagePdf { .. } => {
+                // Image/PDF layout — not yet implemented
             }
         }
     }
