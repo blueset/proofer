@@ -137,7 +137,11 @@ fn render_command(
                 opacity: NormalizedF32::ONE,
             }));
             surface.set_stroke(None);
-            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, false);
+            // Use outlined rendering for single-glyph runs (glyph grid cells)
+            // to ensure metric lines and glyph shapes align exactly.
+            // Multi-glyph runs (text) use the standard CID text path.
+            let outlined = glyphs.len() == 1;
+            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, outlined);
         }
 
         DrawCommand::Line {
