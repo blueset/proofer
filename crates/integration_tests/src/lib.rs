@@ -52,6 +52,20 @@ mod tests {
     }
 
     #[test]
+    fn test_font_inspector_features() {
+        let mut registry = FontRegistry::new();
+        let font_id = load_test_font(&mut registry);
+        let inspector = FontInspector::new(&registry);
+
+        let features = inspector.enumerate_features(font_id).unwrap();
+        assert!(!features.is_empty(), "Arial should have OT features");
+        println!("Font has {} OT features:", features.len());
+        for f in &features {
+            println!("  {} ({})", f.name, f.tag);
+        }
+    }
+
+    #[test]
     fn test_proof_model_roundtrip() {
         let doc = ProofDocument {
             version: "1.0".to_string(),
@@ -130,6 +144,7 @@ mod tests {
             kerning: true,
             features: vec![],
             language: None,
+            variations: vec![],
         };
 
         let mut flow =

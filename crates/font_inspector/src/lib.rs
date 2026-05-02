@@ -220,4 +220,71 @@ impl<'a> FontInspector<'a> {
         }
         Ok(codepoints)
     }
+
+    /// Enumerate OpenType features (GSUB + GPOS).
+    pub fn enumerate_features(&self, font_id: FontId) -> Result<Vec<FeatureInfo>, InspectorError> {
+        use skrifa::raw::TableProvider;
+        let font = self.registry.font_ref(font_id)?;
+        let mut features = Vec::new();
+        let mut seen_tags = std::collections::HashSet::new();
+
+        // GSUB features
+        if let Ok(gsub) = font.gsub() {
+            if let Ok(fl) = gsub.feature_list() {
+                for rec in fl.feature_records() {
+                    let tag = rec.feature_tag();
+                    if seen_tags.insert(tag) {
+                        features.push(FeatureInfo {
+                            tag,
+                            name: feature_tag_name(tag),
+                        });
+                    }
+                }
+            }
+        }
+
+        // GPOS features
+        if let Ok(gpos) = font.gpos() {
+            if let Ok(fl) = gpos.feature_list() {
+                for rec in fl.feature_records() {
+                    let tag = rec.feature_tag();
+                    if seen_tags.insert(tag) {
+                        features.push(FeatureInfo {
+                            tag,
+                            name: feature_tag_name(tag),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(features)
+    }
+}
+
+/// Map a feature tag to a human-readable name.
+fn feature_tag_name(tag: Tag) -> String {
+    match &tag.to_be_bytes() {
+        b"kern" => "Kerning".to_string(),
+        b"liga" => "Standard Ligatures".to_string(),
+        b"dlig" => "Discretionary Ligatures".to_string(),
+        b"hlig" => "Historical Ligatures".to_string(),
+        b"calt" => "Contextual Alternates".to_string(),
+        b"salt" => "Stylistic Alternates".to_string(),
+        b"smcp" => "Small Capitals".to_string(),
+        b"c2sc" => "Caps to Small Caps".to_string(),
+        b"onum" => "Oldstyle Figures".to_string(),
+        b"lnum" => "Lining Figures".to_string(),
+        b"tnum" => "Tabular Figures".to_string(),
+        b"pnum" => "Proportional Figures".to_string(),
+        b"frac" => "Fractions".to_string(),
+        b"ordn" => "Ordinals".to_string(),
+        b"sups" => "Superscript".to_string(),
+        b"subs" => "Subscript".to_string(),
+        b"swsh" => "Swash".to_string(),
+        b"ss01" => "Stylistic Set 1".to_string(),
+        b"ss02" => "Stylistic Set 2".to_string(),
+        b"ss03" => "Stylistic Set 3".to_string(),
+        _ => format!("{tag}"),
+    }
 }

@@ -25,6 +25,7 @@ read-fonts = "0.26"
 # Text layout
 parley = "0.4"
 fontique = "0.4"
+swash = "0.2"
 
 # PDF output
 krilla = "0.6"

@@ -6,11 +6,10 @@ use krilla::geom::{PathBuilder, Point, Rect, Transform};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, Stroke};
-use krilla::text::{Font, TextDirection};
+use krilla::text::{Font, GlyphId, KrillaGlyph, TextDirection};
 use krilla::Document;
-use layout_ir::{Color, DrawCommand, LayoutDocument, Page};
+use layout_ir::{Color, DrawCommand, LayoutDocument};
 use std::collections::HashMap;
-use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,13 +22,23 @@ pub enum RenderError {
     FontNotLoaded(FontId),
 }
 
+/// A font ID key that also encodes "label font" vs "user font".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FontCacheKey {
+    User(FontId),
+    Label,
+}
+
 /// Render a LayoutDocument to PDF bytes.
 pub fn render_to_pdf(
     doc: &LayoutDocument,
     registry: &FontRegistry,
 ) -> Result<Vec<u8>, RenderError> {
     let mut document = Document::new();
-    let mut font_cache: HashMap<FontId, Font> = HashMap::new();
+    let mut font_cache: HashMap<FontCacheKey, Font> = HashMap::new();
+
+    // Pre-load a system font for labels
+    let label_font = load_label_font();
 
     for page in &doc.pages {
         let settings = PageSettings::from_wh(page.width, page.height)
@@ -38,7 +47,13 @@ pub fn render_to_pdf(
         let mut surface = krilla_page.surface();
 
         for cmd in &page.commands {
-            render_command(&mut surface, cmd, registry, &mut font_cache)?;
+            render_command(
+                &mut surface,
+                cmd,
+                registry,
+                &mut font_cache,
+                label_font.as_ref(),
+            )?;
         }
 
         surface.finish();
@@ -55,7 +70,8 @@ fn render_command(
     surface: &mut krilla::surface::Surface<'_>,
     cmd: &DrawCommand,
     registry: &FontRegistry,
-    font_cache: &mut HashMap<FontId, Font>,
+    font_cache: &mut HashMap<FontCacheKey, Font>,
+    label_font: Option<&Font>,
 ) -> Result<(), RenderError> {
     match cmd {
         DrawCommand::GlyphRun {
@@ -64,14 +80,69 @@ fn render_command(
             glyphs,
             text,
         } => {
-            let krilla_font = get_or_load_font(*font_id, registry, font_cache)?;
-            // Use draw_glyphs for positioned glyphs
-            // For now, use draw_text as a simpler approach for text runs
-            if !text.is_empty() && !glyphs.is_empty() {
-                let pos = Point::from_xy(glyphs[0].x, glyphs[0].y);
-                let font_size = if *size > 0.0 { *size } else { 12.0 };
-                surface.draw_text(pos, krilla_font, font_size, text, false, TextDirection::Auto);
+            if glyphs.is_empty() {
+                return Ok(());
             }
+
+            let krilla_font = get_or_load_font(*font_id, registry, font_cache)?;
+            let font_size = if *size > 0.0 { *size } else { 12.0 };
+            let upm = krilla_font.units_per_em() as f32;
+
+            // Build KrillaGlyphs with proper positioning
+            // Our glyphs store absolute (x, y) positions. We convert these into
+            // relative advances for krilla's draw_glyphs API which takes a start
+            // point and relative advances.
+            let start = Point::from_xy(glyphs[0].x, glyphs[0].y);
+
+            let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
+            for (i, g) in glyphs.iter().enumerate() {
+                // Compute x_advance: distance to next glyph (or 0 for last)
+                let x_advance_pts = if i + 1 < glyphs.len() {
+                    glyphs[i + 1].x - g.x
+                } else {
+                    0.0
+                };
+
+                // Compute offsets relative to the expected position
+                let x_offset_pts = if i == 0 {
+                    0.0
+                } else {
+                    // offset from where the cursor would be after previous advances
+                    let expected_x: f32 = glyphs[0].x
+                        + glyphs[..i]
+                            .windows(2)
+                            .map(|w| w[1].x - w[0].x)
+                            .sum::<f32>();
+                    g.x - expected_x
+                };
+                let y_offset_pts = if i == 0 { 0.0 } else { g.y - glyphs[0].y };
+
+                // Normalize by UPM (KrillaGlyph values are multiplied by font_size internally)
+                let norm = upm / font_size;
+
+                // Determine text range for this glyph
+                let text_len = text.len();
+                let range_start = (i * text_len / glyphs.len().max(1)).min(text_len);
+                let range_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
+
+                krilla_glyphs.push(KrillaGlyph::new(
+                    GlyphId::new(g.glyph_id),
+                    x_advance_pts * norm / font_size,
+                    x_offset_pts * norm / font_size,
+                    y_offset_pts * norm / font_size,
+                    0.0,
+                    range_start..range_end,
+                    None,
+                ));
+            }
+
+            surface.set_fill(Some(Fill {
+                paint: rgb::Color::new(0, 0, 0).into(),
+                rule: FillRule::NonZero,
+                opacity: NormalizedF32::ONE,
+            }));
+            surface.set_stroke(None);
+            surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, false);
         }
 
         DrawCommand::Line {
@@ -137,8 +208,23 @@ fn render_command(
             size,
             color,
         } => {
-            // Labels use a system font — skip for now
-            // TODO: Load a default system font for labels
+            if let Some(font) = label_font {
+                let c = color_to_paint(*color);
+                surface.set_fill(Some(Fill {
+                    paint: c.into(),
+                    rule: FillRule::NonZero,
+                    opacity: NormalizedF32::ONE,
+                }));
+                surface.set_stroke(None);
+                surface.draw_text(
+                    Point::from_xy(*x, *y),
+                    font.clone(),
+                    *size,
+                    text,
+                    false,
+                    TextDirection::Auto,
+                );
+            }
         }
 
         DrawCommand::Clip {
@@ -154,14 +240,14 @@ fn render_command(
                 if let Some(clip) = pb.finish() {
                     surface.push_clip_path(&clip, &FillRule::NonZero);
                     for child in children {
-                        render_command(surface, child, registry, font_cache)?;
+                        render_command(surface, child, registry, font_cache, label_font)?;
                     }
                     surface.pop();
                 }
             }
         }
 
-        DrawCommand::Image { data, x, y, w, h } => {
+        DrawCommand::Image { .. } => {
             // TODO: Image rendering
         }
 
@@ -174,7 +260,7 @@ fn render_command(
                 surface.push_transform(&tr);
             }
             for child in children {
-                render_command(surface, child, registry, font_cache)?;
+                render_command(surface, child, registry, font_cache, label_font)?;
             }
             if transform.is_some() {
                 surface.pop();
@@ -188,9 +274,10 @@ fn render_command(
 fn get_or_load_font(
     font_id: FontId,
     registry: &FontRegistry,
-    cache: &mut HashMap<FontId, Font>,
+    cache: &mut HashMap<FontCacheKey, Font>,
 ) -> Result<Font, RenderError> {
-    if let Some(font) = cache.get(&font_id) {
+    let key = FontCacheKey::User(font_id);
+    if let Some(font) = cache.get(&key) {
         return Ok(font.clone());
     }
 
@@ -199,8 +286,30 @@ fn get_or_load_font(
     let krilla_font = Font::new(data_vec.into(), face_index)
         .ok_or_else(|| RenderError::Krilla("failed to load font in krilla".into()))?;
 
-    cache.insert(font_id, krilla_font.clone());
+    cache.insert(key, krilla_font.clone());
     Ok(krilla_font)
+}
+
+/// Try to load a system font for label rendering.
+fn load_label_font() -> Option<Font> {
+    // Try common system font paths
+    let candidates = [
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\segoeui.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/SFNSText.ttf",
+    ];
+
+    for path in &candidates {
+        if let Ok(data) = std::fs::read(path) {
+            if let Some(font) = Font::new(data.into(), 0) {
+                return Some(font);
+            }
+        }
+    }
+
+    None
 }
 
 fn color_to_paint(c: Color) -> rgb::Color {

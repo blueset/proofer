@@ -275,6 +275,9 @@ pub struct DesignAttributes {
     pub features: Vec<(String, u32)>,
     /// Language tag for OpenType shaping.
     pub language: Option<String>,
+    /// Variation axis settings (tag, value) for variable fonts.
+    #[serde(default)]
+    pub variations: Vec<(String, f32)>,
 }
 
 impl Default for DesignAttributes {
@@ -286,6 +289,7 @@ impl Default for DesignAttributes {
             kerning: true,
             features: Vec::new(),
             language: None,
+            variations: Vec::new(),
         }
     }
 }

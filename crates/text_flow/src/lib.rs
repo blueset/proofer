@@ -55,6 +55,8 @@ pub struct TextStyle {
     pub kerning: bool,
     pub features: Vec<(String, u32)>,
     pub language: Option<String>,
+    /// Variation axis settings (tag string, value) for variable fonts.
+    pub variations: Vec<(String, f32)>,
 }
 
 /// A text flow represents shaped text that can be consumed line by line.
@@ -71,178 +73,34 @@ pub struct TextFlow {
 impl TextFlow {
     /// Create a new text flow by shaping text at the given width.
     ///
-    /// In this initial implementation, we do a simplified line-breaking
-    /// algorithm. Full parley integration will replace this.
+    /// Uses parley for proper text shaping with OpenType features,
+    /// ligatures, and complex script support. Falls back to a simple
+    /// word-wrapper if parley shaping fails.
     pub fn new(
         text: &str,
         style: TextStyle,
         max_width: f32,
         registry: &FontRegistry,
     ) -> Result<Self, TextFlowError> {
-        let font = registry.font_ref(style.font_id)?;
-
-        // Get font metrics for line height calculation
-        let metrics =
-            font.metrics(skrifa::prelude::Size::new(style.font_size), skrifa::prelude::LocationRef::default());
-        let ascent = metrics.ascent;
-        let descent = -metrics.descent; // skrifa reports descent as negative
-        let leading = metrics.leading;
-        let line_height = style
-            .line_height
-            .map(|lh| lh * style.font_size)
-            .unwrap_or(ascent + descent + leading);
-
-        // Get glyph metrics for width calculation
-        let glyph_metrics =
-            font.glyph_metrics(skrifa::prelude::Size::new(style.font_size), skrifa::prelude::LocationRef::default());
-        let charmap = font.charmap();
-
-        // Simple word-wrapping line breaker
-        let mut lines = Vec::new();
-        let mut current_line_glyphs = Vec::new();
-        let mut current_x: f32 = 0.0;
-        let mut line_start = 0usize;
-        let mut word_start = 0usize;
-        let mut word_glyphs = Vec::new();
-        let mut word_width: f32 = 0.0;
-
-        let chars: Vec<char> = text.chars().collect();
-        let mut char_idx = 0;
-        let mut byte_offset = 0;
-
-        while char_idx < chars.len() {
-            let ch = chars[char_idx];
-            let ch_len = ch.len_utf8();
-
-            if ch == '\n' {
-                // Flush word
-                if !word_glyphs.is_empty() {
-                    current_line_glyphs.append(&mut word_glyphs);
-                    current_x += word_width;
-                    word_width = 0.0;
-                }
-                // Emit line
-                lines.push(make_shaped_line(
-                    &current_line_glyphs,
-                    style.font_id,
-                    line_start,
-                    byte_offset + ch_len,
-                    ascent,
-                    descent,
-                    leading,
-                    line_height,
-                    current_x,
-                ));
-                current_line_glyphs.clear();
-                current_x = 0.0;
-                line_start = byte_offset + ch_len;
-                word_start = line_start;
-                byte_offset += ch_len;
-                char_idx += 1;
-                continue;
+        // Try parley-based shaping first
+        match shape_with_parley(text, &style, max_width, registry) {
+            Ok(lines) => Ok(Self {
+                lines,
+                cursor: 0,
+                style: style.clone(),
+                original_text: text.to_string(),
+            }),
+            Err(_) => {
+                // Fall back to simple shaping
+                let lines = shape_simple(text, &style, max_width, registry)?;
+                Ok(Self {
+                    lines,
+                    cursor: 0,
+                    style,
+                    original_text: text.to_string(),
+                })
             }
-
-            let gid = charmap.map(ch);
-            let advance = gid
-                .map(|g| glyph_metrics.advance_width(g).unwrap_or(0.0))
-                .unwrap_or(style.font_size * 0.5); // fallback for missing glyphs
-
-            let tracking_offset = if char_idx > 0 {
-                style.tracking * style.font_size
-            } else {
-                0.0
-            };
-
-            if ch.is_whitespace() {
-                // Flush word to line
-                if !word_glyphs.is_empty() {
-                    current_line_glyphs.append(&mut word_glyphs);
-                    current_x += word_width;
-                    word_width = 0.0;
-                }
-                // Add space glyph
-                if let Some(gid) = gid {
-                    current_line_glyphs.push(PositionedGlyph {
-                        glyph_id: gid.to_u32(),
-                        x: current_x + tracking_offset,
-                        y: 0.0, // y set during consumption
-                    });
-                }
-                current_x += advance + tracking_offset;
-                word_start = byte_offset + ch_len;
-            } else {
-                // Check if word would overflow
-                if current_x + word_width + advance + tracking_offset > max_width
-                    && !current_line_glyphs.is_empty()
-                {
-                    // Emit current line, start new line with current word
-                    lines.push(make_shaped_line(
-                        &current_line_glyphs,
-                        style.font_id,
-                        line_start,
-                        word_start,
-                        ascent,
-                        descent,
-                        leading,
-                        line_height,
-                        current_x - word_width,
-                    ));
-                    current_line_glyphs.clear();
-
-                    // Reposition word glyphs to start of new line
-                    let offset = if let Some(first) = word_glyphs.first() {
-                        first.x
-                    } else {
-                        0.0
-                    };
-                    for g in &mut word_glyphs {
-                        g.x -= offset;
-                    }
-                    current_x = word_width;
-                    line_start = word_start;
-                }
-
-                if let Some(gid) = gid {
-                    word_glyphs.push(PositionedGlyph {
-                        glyph_id: gid.to_u32(),
-                        x: current_x + word_width + tracking_offset,
-                        y: 0.0,
-                    });
-                }
-                word_width += advance + tracking_offset;
-            }
-
-            byte_offset += ch_len;
-            char_idx += 1;
         }
-
-        // Flush remaining word
-        if !word_glyphs.is_empty() {
-            current_line_glyphs.append(&mut word_glyphs);
-            current_x += word_width;
-        }
-
-        // Flush remaining line
-        if !current_line_glyphs.is_empty() || line_start < text.len() {
-            lines.push(make_shaped_line(
-                &current_line_glyphs,
-                style.font_id,
-                line_start,
-                text.len(),
-                ascent,
-                descent,
-                leading,
-                line_height,
-                current_x,
-            ));
-        }
-
-        Ok(Self {
-            lines,
-            cursor: 0,
-            style,
-            original_text: text.to_string(),
-        })
     }
 
     /// Check if there are remaining unconsumed lines.
@@ -425,3 +283,269 @@ fn make_shaped_line(
 }
 
 use skrifa::MetadataProvider;
+
+/// Shape text using parley for proper OpenType shaping, ligatures, and complex scripts.
+fn shape_with_parley(
+    text: &str,
+    style: &TextStyle,
+    max_width: f32,
+    registry: &FontRegistry,
+) -> Result<Vec<ShapedLine>, TextFlowError> {
+    use parley::FontContext;
+    use parley::LayoutContext;
+    use parley::style::{FontStack, FontFeature, FontVariation, FontSettings};
+
+    // Get font data and metadata
+    let (font_data, face_index) = registry.font_data(style.font_id)?;
+    let font_meta = registry.metadata(style.font_id)?;
+
+    // Create fontique collection and register our font
+    let mut font_ctx = FontContext::new();
+    let blob: fontique::Blob<u8> = fontique::Blob::new(std::sync::Arc::new((*font_data).clone()));
+    let registered = font_ctx.collection.register_fonts(blob, None);
+
+    if registered.is_empty() {
+        return Err(TextFlowError::Layout("failed to register font with fontique".into()));
+    }
+
+    // Use the font's family name for the font stack
+    let family_name = font_meta.family.clone();
+
+    // Build variation settings
+    let var_settings: Vec<FontVariation> = style
+        .variations
+        .iter()
+        .filter_map(|(tag, val)| {
+            let tag_bytes = tag.as_bytes();
+            if tag_bytes.len() == 4 {
+                let arr: [u8; 4] = [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]];
+                Some(FontVariation {
+                    tag: swash::tag_from_bytes(&arr),
+                    value: *val,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Build feature settings
+    let feat_settings: Vec<FontFeature> = style
+        .features
+        .iter()
+        .filter_map(|(tag, val)| {
+            let tag_bytes = tag.as_bytes();
+            if tag_bytes.len() == 4 {
+                let arr: [u8; 4] = [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]];
+                Some(FontFeature {
+                    tag: swash::tag_from_bytes(&arr),
+                    value: *val as u16,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Build parley layout using ranged builder with individual style properties
+    let mut layout_ctx: LayoutContext<[u8; 4]> = LayoutContext::new();
+    let mut builder = layout_ctx.ranged_builder(&mut font_ctx, text, 1.0, false);
+    builder.push_default(parley::style::StyleProperty::FontStack(
+        FontStack::Source(std::borrow::Cow::Owned(family_name)),
+    ));
+    builder.push_default(parley::style::StyleProperty::FontSize(style.font_size));
+    builder.push_default(parley::style::StyleProperty::LetterSpacing(
+        style.tracking * style.font_size,
+    ));
+    builder.push_default(parley::style::StyleProperty::LineHeight(
+        style.line_height.unwrap_or(1.2),
+    ));
+    if !var_settings.is_empty() {
+        builder.push_default(parley::style::StyleProperty::FontVariations(
+            FontSettings::List(std::borrow::Cow::Owned(var_settings)),
+        ));
+    }
+    if !feat_settings.is_empty() {
+        builder.push_default(parley::style::StyleProperty::FontFeatures(
+            FontSettings::List(std::borrow::Cow::Owned(feat_settings)),
+        ));
+    }
+    let mut layout = builder.build(text);
+    layout.break_all_lines(Some(max_width));
+
+    // Extract lines from parley layout
+    let mut result_lines = Vec::new();
+
+    for line in layout.lines() {
+        let line_metrics = line.metrics();
+        let mut runs = Vec::new();
+
+        for item in line.items() {
+            if let parley::layout::PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                let mut glyphs = Vec::new();
+
+                for g in glyph_run.positioned_glyphs() {
+                    glyphs.push(PositionedGlyph {
+                        glyph_id: g.id as u32,
+                        x: g.x,
+                        y: 0.0, // y is handled during consumption via baseline
+                    });
+                }
+
+                let text_range = glyph_run.run().text_range();
+                runs.push(ShapedRun {
+                    font_id: style.font_id,
+                    glyphs,
+                    text_range,
+                });
+            }
+        }
+
+        result_lines.push(ShapedLine {
+            runs,
+            metrics: LineMetrics {
+                ascent: line_metrics.ascent,
+                descent: line_metrics.descent,
+                leading: line_metrics.leading,
+                width: line_metrics.advance,
+            },
+        });
+    }
+
+    if result_lines.is_empty() && !text.is_empty() {
+        return Err(TextFlowError::Layout("parley produced no lines".into()));
+    }
+
+    Ok(result_lines)
+}
+
+/// Simple fallback shaper using skrifa charmap and glyph metrics.
+/// Used when parley shaping fails (e.g., font not recognized by fontique).
+fn shape_simple(
+    text: &str,
+    style: &TextStyle,
+    max_width: f32,
+    registry: &FontRegistry,
+) -> Result<Vec<ShapedLine>, TextFlowError> {
+    let font = registry.font_ref(style.font_id)?;
+
+    let var_settings: Vec<(&str, f32)> = style
+        .variations
+        .iter()
+        .map(|(tag, val)| (tag.as_str(), *val))
+        .collect();
+    let location = font.axes().location(var_settings.iter().copied());
+    let loc_ref = location.coords();
+    let size = skrifa::prelude::Size::new(style.font_size);
+
+    let metrics = font.metrics(size, loc_ref);
+    let ascent = metrics.ascent;
+    let descent = -metrics.descent;
+    let leading = metrics.leading;
+    let line_height = style
+        .line_height
+        .map(|lh| lh * style.font_size)
+        .unwrap_or(ascent + descent + leading);
+
+    let glyph_metrics = font.glyph_metrics(size, loc_ref);
+    let charmap = font.charmap();
+
+    let mut lines = Vec::new();
+    let mut current_line_glyphs = Vec::new();
+    let mut current_x: f32 = 0.0;
+    let mut line_start = 0usize;
+    let mut word_start = 0usize;
+    let mut word_glyphs = Vec::new();
+    let mut word_width: f32 = 0.0;
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut char_idx = 0;
+    let mut byte_offset = 0;
+
+    while char_idx < chars.len() {
+        let ch = chars[char_idx];
+        let ch_len = ch.len_utf8();
+
+        if ch == '\n' {
+            if !word_glyphs.is_empty() {
+                current_line_glyphs.append(&mut word_glyphs);
+                current_x += word_width;
+                word_width = 0.0;
+            }
+            lines.push(make_shaped_line(
+                &current_line_glyphs, style.font_id, line_start, byte_offset + ch_len,
+                ascent, descent, leading, line_height, current_x,
+            ));
+            current_line_glyphs.clear();
+            current_x = 0.0;
+            line_start = byte_offset + ch_len;
+            word_start = line_start;
+            byte_offset += ch_len;
+            char_idx += 1;
+            continue;
+        }
+
+        let gid = charmap.map(ch);
+        let advance = gid
+            .map(|g| glyph_metrics.advance_width(g).unwrap_or(0.0))
+            .unwrap_or(style.font_size * 0.5);
+
+        let tracking_offset = if char_idx > 0 { style.tracking * style.font_size } else { 0.0 };
+
+        if ch.is_whitespace() {
+            if !word_glyphs.is_empty() {
+                current_line_glyphs.append(&mut word_glyphs);
+                current_x += word_width;
+                word_width = 0.0;
+            }
+            if let Some(gid) = gid {
+                current_line_glyphs.push(PositionedGlyph {
+                    glyph_id: gid.to_u32(),
+                    x: current_x + tracking_offset,
+                    y: 0.0,
+                });
+            }
+            current_x += advance + tracking_offset;
+            word_start = byte_offset + ch_len;
+        } else {
+            if current_x + word_width + advance + tracking_offset > max_width
+                && !current_line_glyphs.is_empty()
+            {
+                lines.push(make_shaped_line(
+                    &current_line_glyphs, style.font_id, line_start, word_start,
+                    ascent, descent, leading, line_height, current_x - word_width,
+                ));
+                current_line_glyphs.clear();
+                let offset = word_glyphs.first().map(|g| g.x).unwrap_or(0.0);
+                for g in &mut word_glyphs { g.x -= offset; }
+                current_x = word_width;
+                line_start = word_start;
+            }
+
+            if let Some(gid) = gid {
+                word_glyphs.push(PositionedGlyph {
+                    glyph_id: gid.to_u32(),
+                    x: current_x + word_width + tracking_offset,
+                    y: 0.0,
+                });
+            }
+            word_width += advance + tracking_offset;
+        }
+
+        byte_offset += ch_len;
+        char_idx += 1;
+    }
+
+    if !word_glyphs.is_empty() {
+        current_line_glyphs.append(&mut word_glyphs);
+        current_x += word_width;
+    }
+    if !current_line_glyphs.is_empty() || line_start < text.len() {
+        lines.push(make_shaped_line(
+            &current_line_glyphs, style.font_id, line_start, text.len(),
+            ascent, descent, leading, line_height, current_x,
+        ));
+    }
+
+    Ok(lines)
+}

@@ -9,5 +9,6 @@ font_registry = { workspace = true }
 layout_ir = { workspace = true }
 parley = { workspace = true }
 fontique = { workspace = true }
+swash = { workspace = true }
 skrifa = { workspace = true }
 thiserror = { workspace = true }

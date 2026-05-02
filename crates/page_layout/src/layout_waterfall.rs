@@ -39,6 +39,7 @@ pub fn layout(
             kerning: design_attrs.kerning,
             features: design_attrs.features.clone(),
             language: design_attrs.language.clone(),
+            variations: design_attrs.variations.clone(),
         };
 
         let max_width = allocator.body_width();
