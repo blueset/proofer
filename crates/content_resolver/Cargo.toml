@@ -1,0 +1,12 @@
+[package]
+name = "content_resolver"
+description = "Expands abstract content specs into concrete text/glyph lists"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+font_inspector = { workspace = true }
+font_registry = { workspace = true }
+proof_model = { workspace = true }
+unicode-script = { workspace = true }
+thiserror = { workspace = true }

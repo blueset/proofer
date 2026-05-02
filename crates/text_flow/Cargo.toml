@@ -1,0 +1,13 @@
+[package]
+name = "text_flow"
+description = "Text layout with threading (vsplit primitive) via parley"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+font_registry = { workspace = true }
+layout_ir = { workspace = true }
+parley = { workspace = true }
+fontique = { workspace = true }
+skrifa = { workspace = true }
+thiserror = { workspace = true }

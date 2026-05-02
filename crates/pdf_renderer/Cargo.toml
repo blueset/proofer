@@ -1,0 +1,12 @@
+[package]
+name = "pdf_renderer"
+description = "PDF output via krilla from Layout IR"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+layout_ir = { workspace = true }
+font_registry = { workspace = true }
+krilla = { workspace = true }
+skrifa = { workspace = true }
+thiserror = { workspace = true }

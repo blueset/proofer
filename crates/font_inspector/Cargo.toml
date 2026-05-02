@@ -1,0 +1,11 @@
+[package]
+name = "font_inspector"
+description = "Read-only font introspection queries"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+font_registry = { workspace = true }
+skrifa = { workspace = true }
+read-fonts = { workspace = true }
+thiserror = { workspace = true }

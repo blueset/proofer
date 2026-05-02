@@ -1,0 +1,12 @@
+[package]
+name = "font_registry"
+description = "Font identity, ownership, and lifetime management"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+skrifa = { workspace = true }
+read-fonts = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+layout_ir = { workspace = true }

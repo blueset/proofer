@@ -1,0 +1,8 @@
+[package]
+name = "layout_ir"
+description = "Display list / intermediate representation for font proofer layouts"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { workspace = true }

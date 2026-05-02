@@ -1,0 +1,14 @@
+[package]
+name = "page_layout"
+description = "Custom page layout engine producing Layout IR"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+layout_ir = { workspace = true }
+font_registry = { workspace = true }
+font_inspector = { workspace = true }
+content_resolver = { workspace = true }
+text_flow = { workspace = true }
+proof_model = { workspace = true }
+thiserror = { workspace = true }

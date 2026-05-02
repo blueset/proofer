@@ -1,0 +1,50 @@
+[workspace]
+members = [
+    "crates/layout_ir",
+    "crates/font_registry",
+    "crates/font_inspector",
+    "crates/proof_model",
+    "crates/content_resolver",
+    "crates/text_flow",
+    "crates/page_layout",
+    "crates/pdf_renderer",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Font parsing & introspection
+skrifa = "0.26"
+read-fonts = "0.26"
+
+# Text layout
+parley = "0.4"
+fontique = "0.4"
+
+# PDF output
+krilla = "0.6"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Unicode
+unicode-script = "0.5"
+
+# Utilities
+thiserror = "2"
+bitflags = "2"
+
+# Internal crates
+layout_ir = { path = "crates/layout_ir" }
+font_registry = { path = "crates/font_registry" }
+font_inspector = { path = "crates/font_inspector" }
+proof_model = { path = "crates/proof_model" }
+content_resolver = { path = "crates/content_resolver" }
+text_flow = { path = "crates/text_flow" }
+page_layout = { path = "crates/page_layout" }
+pdf_renderer = { path = "crates/pdf_renderer" }
