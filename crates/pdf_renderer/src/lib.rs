@@ -116,11 +116,36 @@ fn render_command(
                 surface.draw_glyphs(
                     start, &[krilla_glyph], krilla_font, text, font_size, true,
                 );
+            } else if !variations.is_empty() {
+                // Variable font text: use outlined rendering to avoid advance
+                // width mismatches between rustybuzz/ttf_parser (used by krilla's
+                // naive_shape) and skrifa 0.37 (used by krilla's font.advance_width
+                // for TJ adjustments). These two produce different interpolated
+                // advances at non-default variation locations.
+                let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
+                for (i, g) in glyphs.iter().enumerate() {
+                    let x_advance_pts = if i + 1 < glyphs.len() {
+                        glyphs[i + 1].x - g.x
+                    } else {
+                        0.0
+                    };
+                    let text_len = text.len();
+                    let raw_start = (i * text_len / glyphs.len().max(1)).min(text_len);
+                    let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
+                    let range_start = snap_to_char_boundary(text, raw_start);
+                    let range_end = snap_to_char_boundary(text, raw_end);
+                    krilla_glyphs.push(KrillaGlyph::new(
+                        GlyphId::new(g.glyph_id),
+                        x_advance_pts / font_size,
+                        0.0, 0.0, 0.0,
+                        range_start..range_end,
+                        None,
+                    ));
+                }
+                surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, true);
             } else if !text.is_empty() {
-                // Multi-glyph text run: use draw_text so krilla handles
-                // glyph-level positioning with its own consistent skrifa.
-                // We only use parley for line breaking; within each run,
-                // krilla re-shapes the text to avoid skrifa version mismatches.
+                // Non-variable text: use draw_text for CID text (smaller PDF,
+                // text selection). No advance mismatch at default variation.
                 surface.draw_text(
                     start,
                     krilla_font,
