@@ -105,8 +105,7 @@ fn render_command(
             surface.set_stroke(None);
 
             if glyphs.len() == 1 {
-                // Single glyph (glyph grid): use outlined rendering for exact
-                // metric line alignment.
+                // Single glyph (glyph grid): outlined for metric alignment
                 let krilla_glyph = KrillaGlyph::new(
                     GlyphId::new(glyphs[0].glyph_id),
                     0.0, 0.0, 0.0, 0.0,
@@ -116,12 +115,17 @@ fn render_command(
                 surface.draw_glyphs(
                     start, &[krilla_glyph], krilla_font, text, font_size, true,
                 );
-            } else if !variations.is_empty() {
-                // Variable font text: use outlined rendering to avoid advance
-                // width mismatches between rustybuzz/ttf_parser (used by krilla's
-                // naive_shape) and skrifa 0.37 (used by krilla's font.advance_width
-                // for TJ adjustments). These two produce different interpolated
-                // advances at non-default variation locations.
+            } else {
+                // Multi-glyph text: use CID text path.
+                // For variable fonts, compute an LSB correction offset per glyph
+                // to compensate for the subsetter writing default-instance LSB
+                // values instead of variation-interpolated ones.
+                let lsb_offsets = if !variations.is_empty() {
+                    compute_lsb_offsets(*font_id, variations, &glyphs, registry)
+                } else {
+                    vec![0.0; glyphs.len()]
+                };
+
                 let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
                 for (i, g) in glyphs.iter().enumerate() {
                     let x_advance_pts = if i + 1 < glyphs.len() {
@@ -134,26 +138,23 @@ fn render_command(
                     let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
                     let range_start = snap_to_char_boundary(text, raw_start);
                     let range_end = snap_to_char_boundary(text, raw_end);
+
+                    // LSB offset: shift glyph to compensate for wrong LSB in
+                    // the subsetted font. Normalized by font_size since krilla
+                    // multiplies x_offset by font_size internally.
+                    let x_offset = lsb_offsets[i] / font_size;
+
                     krilla_glyphs.push(KrillaGlyph::new(
                         GlyphId::new(g.glyph_id),
                         x_advance_pts / font_size,
-                        0.0, 0.0, 0.0,
+                        x_offset,
+                        0.0,
+                        0.0,
                         range_start..range_end,
                         None,
                     ));
                 }
-                surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, true);
-            } else if !text.is_empty() {
-                // Non-variable text: use draw_text for CID text (smaller PDF,
-                // text selection). No advance mismatch at default variation.
-                surface.draw_text(
-                    start,
-                    krilla_font,
-                    font_size,
-                    text,
-                    false,
-                    TextDirection::Auto,
-                );
+                surface.draw_glyphs(start, &krilla_glyphs, krilla_font, text, font_size, false);
             }
         }
 
@@ -326,6 +327,58 @@ fn color_to_paint(c: Color) -> rgb::Color {
         (c.g * 255.0) as u8,
         (c.b * 255.0) as u8,
     )
+}
+
+/// Compute per-glyph LSB offset to compensate for the subsetter writing
+/// default-instance LSB values. Returns offset in points for each glyph:
+/// offset = (correct_lsb - default_lsb) * scale
+///
+/// The subsetted font has default LSB baked into glyph outlines.
+/// The correct LSB at the variation location differs. This offset
+/// shifts each glyph's rendering position to compensate.
+fn compute_lsb_offsets(
+    font_id: FontId,
+    variations: &[(String, f32)],
+    glyphs: &[layout_ir::PositionedGlyph],
+    registry: &FontRegistry,
+) -> Vec<f32> {
+    use skrifa::MetadataProvider;
+
+    let font = match registry.font_ref(font_id) {
+        Ok(f) => f,
+        Err(_) => return vec![0.0; glyphs.len()],
+    };
+
+    let upm = font
+        .metrics(skrifa::prelude::Size::unscaled(), skrifa::prelude::LocationRef::default())
+        .units_per_em as f32;
+
+    // Default instance metrics
+    let default_gm = font.glyph_metrics(
+        skrifa::prelude::Size::unscaled(),
+        skrifa::prelude::LocationRef::default(),
+    );
+
+    // Variation instance metrics
+    let var_settings: Vec<(&str, f32)> = variations
+        .iter()
+        .map(|(tag, val)| (tag.as_str(), *val))
+        .collect();
+    let location = font.axes().location(var_settings.iter().copied());
+    let loc_ref: skrifa::prelude::LocationRef<'_> = (&location).into();
+    let var_gm = font.glyph_metrics(skrifa::prelude::Size::unscaled(), loc_ref);
+
+    glyphs
+        .iter()
+        .map(|g| {
+            let gid = skrifa::GlyphId::new(g.glyph_id);
+            let lsb_default = default_gm.left_side_bearing(gid).unwrap_or(0.0);
+            let lsb_correct = var_gm.left_side_bearing(gid).unwrap_or(0.0);
+            // Offset in font units; will be normalized by caller
+            // (divided by font_size, then krilla multiplies by font_size)
+            (lsb_correct - lsb_default) / upm
+        })
+        .collect()
 }
 
 /// Snap a byte index to the nearest valid char boundary in a UTF-8 string.
