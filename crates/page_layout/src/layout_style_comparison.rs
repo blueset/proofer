@@ -218,8 +218,32 @@ fn layout_rows(
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
     let body_width = allocator.body_width();
+    let label_overhead: f32 = 12.0; // label height
+
+    // Pre-measure total height for each row (label + all text lines)
+    let mut row_heights: Vec<f32> = Vec::with_capacity(variants.len());
+    for variant in variants {
+        let style = build_text_style(&variant.design_attrs, variant.font_id);
+        let mut flow = TextFlow::new(text, style, body_width, registry)?;
+        let (lines, _) = flow.consume_into(f32::MAX);
+        let text_height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
+        row_heights.push(label_overhead + text_height);
+    }
+
+    let mut first_on_page = true;
 
     for (i, variant) in variants.iter().enumerate() {
+        let row_total = row_heights[i];
+
+        // If not first on page and row won't fit entirely, start a new page
+        if !first_on_page {
+            let remaining = allocator.remaining_height();
+            if row_total + spacing > remaining {
+                allocator.new_page();
+                first_on_page = true;
+            }
+        }
+
         let label = variant.label.clone().unwrap_or_else(|| {
             let meta = registry.metadata(variant.font_id);
             let base = meta.map(|m| format!("{} {}", m.family, m.style)).unwrap_or_default();
@@ -234,7 +258,7 @@ fn layout_rows(
             size: 7.0,
             color: Color::gray(0.4),
         });
-        allocator.advance(12.0);
+        allocator.advance(label_overhead);
 
         let style = build_text_style(&variant.design_attrs, variant.font_id);
         let font_size = variant.design_attrs.font_size;
@@ -275,6 +299,7 @@ fn layout_rows(
         }
 
         allocator.advance(spacing);
+        first_on_page = false;
     }
 
     Ok(())
