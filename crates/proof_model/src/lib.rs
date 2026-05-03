@@ -375,6 +375,9 @@ pub enum LayoutType {
         /// Spacing between size blocks in points.
         #[serde(default = "default_waterfall_spacing")]
         spacing: f32,
+        /// Optional label text appended after size labels on each page.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
     },
 
     /// Multi-column text flow.
@@ -718,6 +721,7 @@ pub fn example_document() -> ProofDocument {
                 layout: LayoutType::Waterfall {
                     sizes: vec![8.0, 10.0, 12.0, 16.0, 24.0, 36.0, 48.0, 72.0],
                     spacing: 8.0,
+                    label: None,
                 },
                 content: ContentSpec::Text {
                     text: "Hamburgefonstiv".to_string(),

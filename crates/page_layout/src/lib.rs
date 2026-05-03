@@ -416,13 +416,14 @@ pub fn layout_document(
                     registry,
                 )?;
             }
-            proof_model::LayoutType::Waterfall { sizes, spacing } => {
+            proof_model::LayoutType::Waterfall { sizes, spacing, label } => {
                 layout_waterfall::layout(
                     &mut allocator,
                     &content,
                     &section.design_attrs,
                     sizes,
                     *spacing,
+                    label.as_deref(),
                     primary_font_id,
                     registry,
                 )?;

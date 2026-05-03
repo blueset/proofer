@@ -171,6 +171,7 @@ impl TextFlow {
     /// Reset the cursor to the beginning.
     pub fn reset(&mut self) {
         self.cursor = 0;
+        self.total_consumed = 0;
     }
 
     /// Get the font size.
