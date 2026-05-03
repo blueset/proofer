@@ -373,12 +373,61 @@ fn compute_lsb_offsets(
         .map(|g| {
             let gid = skrifa::GlyphId::new(g.glyph_id);
             let lsb_default = default_gm.left_side_bearing(gid).unwrap_or(0.0);
-            let lsb_correct = var_gm.left_side_bearing(gid).unwrap_or(0.0);
-            // Offset in font units; will be normalized by caller
-            // (divided by font_size, then krilla multiplies by font_size)
+
+            // skrifa's left_side_bearing() doesn't interpolate for variable
+            // fonts — it returns the default instance value at all locations.
+            // Compute the true LSB by drawing the outline at the variation
+            // location and using the bounding box xMin.
+            let lsb_correct = {
+                let outlines = font.outline_glyphs();
+                if let Some(outline_glyph) = outlines.get(gid) {
+                    let settings = skrifa::outline::DrawSettings::unhinted(
+                        skrifa::prelude::Size::unscaled(),
+                        loc_ref,
+                    );
+                    let mut pen = BoundsCapturePen::new();
+                    if outline_glyph.draw(settings, &mut pen).is_ok() {
+                        pen.x_min.unwrap_or(lsb_default)
+                    } else {
+                        lsb_default
+                    }
+                } else {
+                    lsb_default
+                }
+            };
+
             (lsb_correct - lsb_default) / upm
         })
         .collect()
+}
+
+/// Simple pen that captures the xMin of glyph outlines.
+struct BoundsCapturePen {
+    x_min: Option<f32>,
+}
+
+impl BoundsCapturePen {
+    fn new() -> Self {
+        Self { x_min: None }
+    }
+    fn track(&mut self, x: f32) {
+        self.x_min = Some(self.x_min.map_or(x, |m: f32| m.min(x)));
+    }
+}
+
+impl skrifa::outline::OutlinePen for BoundsCapturePen {
+    fn move_to(&mut self, x: f32, _y: f32) { self.track(x); }
+    fn line_to(&mut self, x: f32, _y: f32) { self.track(x); }
+    fn quad_to(&mut self, cx: f32, _cy: f32, x: f32, _y: f32) {
+        self.track(cx);
+        self.track(x);
+    }
+    fn curve_to(&mut self, cx0: f32, _cy0: f32, cx1: f32, _cy1: f32, x: f32, _y: f32) {
+        self.track(cx0);
+        self.track(cx1);
+        self.track(x);
+    }
+    fn close(&mut self) {}
 }
 
 /// Snap a byte index to the nearest valid char boundary in a UTF-8 string.
