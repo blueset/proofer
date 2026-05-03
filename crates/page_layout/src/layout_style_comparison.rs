@@ -20,6 +20,7 @@ pub fn layout(
     arrangement: &ComparisonArrangement,
     overflow: &ComparisonOverflow,
     spacing: f32,
+    max_columns: Option<usize>,
     variants: &[ResolvedStyleVariant],
     registry: &FontRegistry,
 ) -> Result<(), LayoutError> {
@@ -37,7 +38,17 @@ pub fn layout(
 
     match arrangement {
         ComparisonArrangement::Columns => {
-            layout_columns(allocator, &text, overflow, spacing, variants, registry)
+            let chunk_size = max_columns
+                .filter(|&n| n > 0)
+                .unwrap_or(variants.len());
+
+            for (chunk_idx, chunk) in variants.chunks(chunk_size).enumerate() {
+                if chunk_idx > 0 {
+                    allocator.new_page();
+                }
+                layout_columns(allocator, &text, overflow, spacing, chunk, registry)?;
+            }
+            Ok(())
         }
         ComparisonArrangement::Rows => {
             layout_rows(allocator, &text, overflow, spacing, variants, registry)
@@ -82,8 +93,8 @@ fn layout_columns(
         });
 
         allocator.push_command(DrawCommand::Label {
+            x: allocator.aligned_label_x(&label, 7.0, variant.design_attrs.text_align, col_x, col_width),
             text: label,
-            x: col_x,
             y: header_y + 9.0,
             size: 7.0,
             color: Color::gray(0.4),
@@ -217,8 +228,8 @@ fn layout_rows(
 
         allocator.ensure_space(20.0);
         allocator.push_command(DrawCommand::Label {
+            x: allocator.aligned_label_x(&label, 7.0, variant.design_attrs.text_align, allocator.body_left(), body_width),
             text: label,
-            x: allocator.body_left(),
             y: allocator.cursor_y() + 9.0,
             size: 7.0,
             color: Color::gray(0.4),
@@ -235,7 +246,8 @@ fn layout_rows(
                 let (lines, _) = flow.consume_into(available);
                 if !lines.is_empty() {
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size, &variant.design_attrs.variations,
+                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
                     allocator.push_command(DrawCommand::Clip {
@@ -252,7 +264,8 @@ fn layout_rows(
                     let (lines, _) = flow.consume_into(available);
                     if lines.is_empty() { allocator.new_page(); continue; }
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size, &variant.design_attrs.variations,
+                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
                     for cmd in commands { allocator.push_command(cmd); }

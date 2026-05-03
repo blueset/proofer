@@ -76,8 +76,8 @@ fn layout_single_style(
         .unwrap_or_else(|_| "Unknown".to_string());
 
     allocator.push_command(layout_ir::DrawCommand::Label {
+        x: allocator.aligned_label_x(&font_name, 8.0, design_attrs.text_align, allocator.body_left(), max_width),
         text: font_name,
-        x: allocator.body_left(),
         y: allocator.cursor_y() + 9.0,
         size: 8.0,
         color: layout_ir::Color::gray(0.4),

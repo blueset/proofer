@@ -39,6 +39,8 @@ pub fn layout(
             features: design_attrs.features.clone(),
             language: design_attrs.language.clone(),
             variations: design_attrs.variations.clone(),
+            text_align: design_attrs.text_align,
+            line_limit: design_attrs.line_limit,
         };
 
         let max_width = allocator.body_width();
@@ -48,9 +50,10 @@ pub fn layout(
         let label_height = 10.0;
         allocator.ensure_space(label_height + size * 1.5);
 
+        let label_text = format!("{:.0}pt", size);
         allocator.push_command(DrawCommand::Label {
-            text: format!("{:.0}pt", size),
-            x: allocator.body_left(),
+            x: allocator.aligned_label_x(&label_text, 7.0, design_attrs.text_align, allocator.body_left(), max_width),
+            text: label_text,
             y: allocator.cursor_y() + 8.0,
             size: 7.0,
             color: Color::gray(0.5),

@@ -148,6 +148,8 @@ mod tests {
             features: std::collections::BTreeMap::new(),
             language: None,
             variations: std::collections::BTreeMap::new(),
+            text_align: proof_model::TextAlign::Left,
+            line_limit: None,
         };
 
         let mut flow =
@@ -348,6 +350,7 @@ mod tests {
                     arrangement: ComparisonArrangement::Columns,
                     overflow: ComparisonOverflow::Flow,
                     spacing: 16.0,
+                    max_columns: None,
                 },
                 content: ContentSpec::Text {
                     text: "The quick brown fox jumps over the lazy dog. ".repeat(10),

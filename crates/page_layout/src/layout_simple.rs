@@ -34,16 +34,27 @@ pub fn layout(
     let max_width = allocator.body_width();
     let mut flow = TextFlow::new(&text, style, max_width, registry)?;
 
+    // Apply y_offset on the first page
+    if design_attrs.y_offset > 0.0 {
+        allocator.advance(design_attrs.y_offset);
+    }
+
     while flow.has_remaining() {
         let available = allocator.remaining_height();
         if available <= 0.0 {
             allocator.new_page();
+            if design_attrs.y_offset > 0.0 {
+                allocator.advance(design_attrs.y_offset);
+            }
             continue;
         }
 
         let (lines, _remaining) = flow.consume_into(available);
         if lines.is_empty() {
             allocator.new_page();
+            if design_attrs.y_offset > 0.0 {
+                allocator.advance(design_attrs.y_offset);
+            }
             continue;
         }
 

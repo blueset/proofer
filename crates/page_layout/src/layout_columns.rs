@@ -87,8 +87,8 @@ pub fn layout(
                 if filled_columns[col] {
                     let col_x = body_left + col as f32 * (col_width + gutter);
                     allocator.push_command(DrawCommand::Label {
+                        x: allocator.aligned_label_x(label, 7.0, design_attrs.text_align, col_x, col_width),
                         text: label.to_string(),
-                        x: col_x,
                         y: page_top + 9.0,
                         size: 7.0,
                         color: Color::gray(0.4),

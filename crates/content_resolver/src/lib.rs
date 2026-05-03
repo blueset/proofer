@@ -300,5 +300,12 @@ fn expand_pattern(
         }
     }
 
+    // Strip trailing separator
+    if !sep.is_empty() {
+        while result.ends_with(sep) {
+            result.truncate(result.len() - sep.len());
+        }
+    }
+
     Ok(result)
 }

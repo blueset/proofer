@@ -241,6 +241,29 @@ impl PageAllocator {
         }
     }
 
+    /// Compute the x position for a label given text alignment and container width.
+    /// `base_x` is the left edge of the container, `container_width` is its width.
+    pub fn aligned_label_x(
+        &self,
+        label_text: &str,
+        label_size: f32,
+        text_align: proof_model::TextAlign,
+        base_x: f32,
+        container_width: f32,
+    ) -> f32 {
+        match text_align {
+            proof_model::TextAlign::Left | proof_model::TextAlign::Justified => base_x,
+            proof_model::TextAlign::Center => {
+                let w = self.measure_label(label_text, label_size);
+                base_x + (container_width - w).max(0.0) / 2.0
+            }
+            proof_model::TextAlign::Right => {
+                let w = self.measure_label(label_text, label_size);
+                base_x + (container_width - w).max(0.0)
+            }
+        }
+    }
+
     /// Consume into a LayoutDocument.
     pub fn into_document(self) -> LayoutDocument {
         let mut doc = LayoutDocument::new();
@@ -271,6 +294,8 @@ pub fn build_text_style(
         features: design_attrs.features.clone(),
         language: design_attrs.language.clone(),
         variations: design_attrs.variations.clone(),
+        text_align: design_attrs.text_align,
+        line_limit: design_attrs.line_limit,
     }
 }
 
@@ -441,6 +466,7 @@ pub fn layout_document(
                 arrangement,
                 overflow,
                 spacing,
+                max_columns,
             } => {
                 // Build resolved style variants
                 let style_variants = resolve_style_variants(section, font_ids);
@@ -452,6 +478,7 @@ pub fn layout_document(
                     arrangement,
                     overflow,
                     *spacing,
+                    *max_columns,
                     &style_variants,
                     registry,
                 )?;

@@ -57,6 +57,10 @@ pub struct TextStyle {
     pub language: Option<String>,
     /// Variation axis settings: tag → value.
     pub variations: std::collections::BTreeMap<String, f32>,
+    /// Text alignment.
+    pub text_align: proof_model::TextAlign,
+    /// Maximum number of lines to render (None = unlimited).
+    pub line_limit: Option<usize>,
 }
 
 /// A text flow represents shaped text that can be consumed line by line.
@@ -68,6 +72,8 @@ pub struct TextFlow {
     cursor: usize,
     style: TextStyle,
     original_text: String,
+    /// Total lines consumed so far (for line_limit tracking).
+    total_consumed: usize,
 }
 
 impl TextFlow {
@@ -89,6 +95,7 @@ impl TextFlow {
                 cursor: 0,
                 style: style.clone(),
                 original_text: text.to_string(),
+                total_consumed: 0,
             }),
             Err(_) => {
                 // Fall back to simple shaping
@@ -98,6 +105,7 @@ impl TextFlow {
                     cursor: 0,
                     style,
                     original_text: text.to_string(),
+                    total_consumed: 0,
                 })
             }
         }
@@ -105,6 +113,11 @@ impl TextFlow {
 
     /// Check if there are remaining unconsumed lines.
     pub fn has_remaining(&self) -> bool {
+        if let Some(limit) = self.style.line_limit {
+            if self.total_consumed >= limit {
+                return false;
+            }
+        }
         self.cursor < self.lines.len()
     }
 
@@ -118,8 +131,16 @@ impl TextFlow {
     pub fn consume_into(&mut self, height: f32) -> (Vec<ShapedLine>, f32) {
         let mut consumed = Vec::new();
         let mut remaining = height;
+        let limit = self.style.line_limit;
 
         while self.cursor < self.lines.len() {
+            // Check line limit
+            if let Some(lim) = limit {
+                if self.total_consumed >= lim {
+                    break;
+                }
+            }
+
             let line = &self.lines[self.cursor];
             let line_h = line.metrics.height();
             if line_h > remaining && !consumed.is_empty() {
@@ -128,6 +149,7 @@ impl TextFlow {
             consumed.push(self.lines[self.cursor].clone());
             remaining -= line_h;
             self.cursor += 1;
+            self.total_consumed += 1;
             if remaining <= 0.0 {
                 break;
             }
@@ -384,6 +406,15 @@ fn shape_with_parley(
     let mut layout = builder.build(text);
     layout.break_all_lines(Some(max_width));
 
+    // Apply text alignment via parley (handles justify properly)
+    let parley_align = match style.text_align {
+        proof_model::TextAlign::Left => parley::layout::Alignment::Left,
+        proof_model::TextAlign::Center => parley::layout::Alignment::Center,
+        proof_model::TextAlign::Right => parley::layout::Alignment::Right,
+        proof_model::TextAlign::Justified => parley::layout::Alignment::Justify,
+    };
+    layout.align(parley_align, parley::layout::AlignmentOptions::default());
+
     // Extract lines from parley layout
     let mut result_lines = Vec::new();
 
@@ -556,6 +587,23 @@ fn shape_simple(
             &current_line_glyphs, style.font_id, line_start, text.len(),
             ascent, descent, leading, line_height, current_x,
         ));
+    }
+
+    // Apply text alignment by offsetting glyph x positions
+    // (Justified falls back to Left in the simple shaper)
+    for line in &mut lines {
+        let align_offset = match style.text_align {
+            proof_model::TextAlign::Left | proof_model::TextAlign::Justified => 0.0,
+            proof_model::TextAlign::Center => (max_width - line.metrics.width).max(0.0) / 2.0,
+            proof_model::TextAlign::Right => (max_width - line.metrics.width).max(0.0),
+        };
+        if align_offset > 0.0 {
+            for run in &mut line.runs {
+                for g in &mut run.glyphs {
+                    g.x += align_offset;
+                }
+            }
+        }
     }
 
     Ok(lines)

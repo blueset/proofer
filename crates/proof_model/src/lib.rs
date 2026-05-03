@@ -335,6 +335,12 @@ pub struct DesignAttributeOverrides {
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variations: Option<BTreeMap<String, f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_align: Option<TextAlign>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y_offset: Option<f32>,
 }
 
 impl DesignAttributeOverrides {
@@ -348,6 +354,9 @@ impl DesignAttributeOverrides {
             features: self.features.clone().unwrap_or_else(|| base.features.clone()),
             language: self.language.clone().or_else(|| base.language.clone()),
             variations: self.variations.clone().unwrap_or_else(|| base.variations.clone()),
+            text_align: self.text_align.unwrap_or(base.text_align),
+            line_limit: self.line_limit.or(base.line_limit),
+            y_offset: self.y_offset.unwrap_or(base.y_offset),
         }
     }
 }
@@ -404,6 +413,10 @@ pub enum LayoutType {
         /// Spacing between rows/columns in points.
         #[serde(default = "default_comparison_spacing")]
         spacing: f32,
+        /// Maximum columns per row (Column arrangement only).
+        /// If more variants exist, they wrap to additional rows on new pages.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_columns: Option<usize>,
     },
 
     /// Multi-style page interleaving.
@@ -556,6 +569,17 @@ pub enum PatternSeparator {
     None,
 }
 
+/// Text alignment for a text block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+    Justified,
+}
+
 /// Design attributes controlling typography.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DesignAttributes {
@@ -580,6 +604,15 @@ pub struct DesignAttributes {
     /// Variation axis settings: tag → value (e.g., wght: 700).
     #[serde(default)]
     pub variations: BTreeMap<String, f32>,
+    /// Text alignment: left, center, right, or justified.
+    #[serde(default)]
+    pub text_align: TextAlign,
+    /// Maximum number of lines to show. None = no limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_limit: Option<usize>,
+    /// Extra top padding (in points) between header/top edge and text on each page.
+    #[serde(default)]
+    pub y_offset: f32,
 }
 
 fn default_font_size() -> f32 {
@@ -596,6 +629,9 @@ impl Default for DesignAttributes {
             features: BTreeMap::new(),
             language: None,
             variations: BTreeMap::new(),
+            text_align: TextAlign::Left,
+            line_limit: None,
+            y_offset: 0.0,
         }
     }
 }

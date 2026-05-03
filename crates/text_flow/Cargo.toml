@@ -7,6 +7,7 @@ version.workspace = true
 [dependencies]
 font_registry = { workspace = true }
 layout_ir = { workspace = true }
+proof_model = { workspace = true }
 parley = { workspace = true }
 fontique = { workspace = true }
 swash = { workspace = true }
