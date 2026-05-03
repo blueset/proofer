@@ -74,8 +74,18 @@ impl<'a> ContentResolver<'a> {
                 Ok(ResolvedContent::Glyphs(filtered))
             }
 
-            ContentSpec::SpacingStrings { pattern } => {
-                let text = generate_spacing_strings(pattern, font_id, &self.inspector)?;
+            ContentSpec::Pattern {
+                glyphs,
+                templates,
+                between,
+                wrap,
+                placeholder,
+                separator,
+            } => {
+                let text = expand_pattern(
+                    glyphs, templates, between.as_ref(), wrap, placeholder, separator,
+                    font_id, &self.inspector,
+                )?;
                 Ok(ResolvedContent::Text(text))
             }
 
@@ -162,35 +172,113 @@ fn unicode_general_category(ch: char) -> String {
     }
 }
 
-/// Generate spacing strings from a pattern template.
-fn generate_spacing_strings(
-    pattern: &str,
+/// Resolve a GlyphSet into a list of characters.
+fn resolve_glyph_set(
+    set: &proof_model::GlyphSet,
+    font_id: FontId,
+    inspector: &FontInspector<'_>,
+) -> Result<Vec<char>, ResolverError> {
+    use proof_model::{GlyphPreset, GlyphSet};
+    match set {
+        GlyphSet::Literal(s) => Ok(s.chars().collect()),
+        GlyphSet::List(_) => {
+            // List variant is for context strings, not individual chars
+            // Return each string's first char as fallback
+            Ok(vec![])
+        }
+        GlyphSet::Preset { preset } => {
+            let glyphs = inspector.enumerate_glyphs(font_id)?;
+            let chars: Vec<char> = glyphs
+                .iter()
+                .filter_map(|g| g.codepoint)
+                .filter(|c| match preset {
+                    GlyphPreset::Uppercase => c.is_uppercase(),
+                    GlyphPreset::Lowercase => c.is_lowercase(),
+                    GlyphPreset::Digits => c.is_ascii_digit(),
+                    GlyphPreset::All => true,
+                })
+                .collect();
+            Ok(chars)
+        }
+    }
+}
+
+/// Resolve a GlyphSet into a list of context strings (for `between` mode).
+fn resolve_context_strings(
+    set: &proof_model::GlyphSet,
+    font_id: FontId,
+    inspector: &FontInspector<'_>,
+) -> Result<Vec<String>, ResolverError> {
+    use proof_model::GlyphSet;
+    match set {
+        GlyphSet::Literal(s) => {
+            // Each character becomes its own context string
+            Ok(s.chars().map(|c| c.to_string()).collect())
+        }
+        GlyphSet::List(strings) => Ok(strings.clone()),
+        GlyphSet::Preset { .. } => {
+            let chars = resolve_glyph_set(set, font_id, inspector)?;
+            Ok(chars.into_iter().map(|c| c.to_string()).collect())
+        }
+    }
+}
+
+/// Expand a Pattern content spec into a text string.
+fn expand_pattern(
+    glyphs: &proof_model::GlyphSet,
+    templates: &[String],
+    between: Option<&proof_model::GlyphSet>,
+    wrap: &[(String, String)],
+    placeholder: &str,
+    separator: &proof_model::PatternSeparator,
     font_id: FontId,
     inspector: &FontInspector<'_>,
 ) -> Result<String, ResolverError> {
-    // Pattern like "HnH" means: for each lowercase letter X, produce "HXH\n"
-    // We look for a placeholder char (lowercase in pattern means "substitute here")
-    let glyphs = inspector.enumerate_glyphs(font_id)?;
-    let lowercase_glyphs: Vec<_> = glyphs
-        .iter()
-        .filter(|g| g.codepoint.is_some_and(|c| c.is_lowercase()))
-        .collect();
+    let test_chars = resolve_glyph_set(glyphs, font_id, inspector)?;
+    if test_chars.is_empty() {
+        return Err(ResolverError::NoGlyphsMatched);
+    }
+
+    let sep = match separator {
+        proof_model::PatternSeparator::Newline => "\n",
+        proof_model::PatternSeparator::Space => " ",
+        proof_model::PatternSeparator::None => "",
+    };
 
     let mut result = String::new();
-    for glyph in &lowercase_glyphs {
-        if let Some(cp) = glyph.codepoint {
-            let line: String = pattern
-                .chars()
-                .map(|c| {
-                    if c.is_lowercase() {
-                        cp
-                    } else {
-                        c
-                    }
-                })
-                .collect();
-            result.push_str(&line);
-            result.push('\n');
+
+    if !templates.is_empty() {
+        // Templates mode: for each test glyph, replace placeholder in each template
+        for ch in &test_chars {
+            let ch_str = ch.to_string();
+            for (i, tmpl) in templates.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(sep);
+                }
+                result.push_str(&tmpl.replace(placeholder, &ch_str));
+            }
+            result.push_str(sep);
+        }
+    } else if let Some(between_set) = between {
+        // Between mode: for each context string, insert test glyphs between repetitions
+        let contexts = resolve_context_strings(between_set, font_id, inspector)?;
+        for ctx in &contexts {
+            result.push_str(ctx);
+            for ch in &test_chars {
+                result.push(*ch);
+                result.push_str(ctx);
+            }
+            result.push_str(sep);
+        }
+    } else if !wrap.is_empty() {
+        // Wrap mode: for each test glyph, wrap with all before/after pairs
+        for ch in &test_chars {
+            for (before, after) in wrap {
+                result.push_str(before);
+                result.push(*ch);
+                result.push_str(after);
+            }
+            result.push_str(sep);
         }
     }
 

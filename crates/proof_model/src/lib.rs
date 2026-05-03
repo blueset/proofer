@@ -479,10 +479,69 @@ pub enum ContentSpec {
         #[serde(default)]
         ranges: Vec<(u32, u32)>,
     },
-    /// Spacing string patterns.
-    SpacingStrings { pattern: String },
+    /// Repeating pattern — generates text by substituting glyphs
+    /// into templates, between context strings, or wrapped in pairs.
+    Pattern {
+        /// Characters to iterate over. Each produces one output cycle.
+        glyphs: GlyphSet,
+        /// Template strings where the placeholder is replaced with each glyph.
+        /// Mutually exclusive with `between` and `wrap`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        templates: Vec<String>,
+        /// Context strings — test glyphs are inserted between repetitions
+        /// of each context string. One output line per context string.
+        /// Mutually exclusive with `templates` and `wrap`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        between: Option<GlyphSet>,
+        /// Before/after wrap pairs — each test glyph is wrapped by all pairs.
+        /// Mutually exclusive with `templates` and `between`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        wrap: Vec<(String, String)>,
+        /// Placeholder string in templates (default: "?").
+        #[serde(default = "default_placeholder")]
+        placeholder: String,
+        /// Separator between output lines (default: newline).
+        #[serde(default)]
+        separator: PatternSeparator,
+    },
     /// Custom user-provided content.
     Custom { text: String },
+}
+
+fn default_placeholder() -> String {
+    "?".to_string()
+}
+
+/// A set of glyphs — either a literal string or a preset from the font.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum GlyphSet {
+    /// Literal characters.
+    Literal(String),
+    /// Characters split by spaces (each element is a string context).
+    List(Vec<String>),
+    /// A preset from the font's character map.
+    Preset { preset: GlyphPreset },
+}
+
+/// Preset glyph sets derived from the font's character map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum GlyphPreset {
+    Uppercase,
+    Lowercase,
+    Digits,
+    All,
+}
+
+/// Separator between pattern output lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PatternSeparator {
+    #[default]
+    Newline,
+    Space,
+    None,
 }
 
 /// Design attributes controlling typography.
