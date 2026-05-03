@@ -536,8 +536,8 @@ pub struct HeaderConfig {
     pub show_header: bool,
     #[serde(default = "default_true")]
     pub show_font_name: bool,
-    #[serde(default)]
-    pub show_font_size: bool,
+    #[serde(default = "default_true")]
+    pub show_datetime: bool,
     #[serde(default = "default_true")]
     pub show_page_numbers: bool,
 }
@@ -547,7 +547,7 @@ impl Default for HeaderConfig {
         Self {
             show_header: true,
             show_font_name: true,
-            show_font_size: false,
+            show_datetime: true,
             show_page_numbers: true,
         }
     }

@@ -164,12 +164,20 @@ impl PageAllocator {
             });
         }
 
-        // Page number — right aligned
+        // Right side: datetime · page number — right aligned
+        let mut right_parts: Vec<String> = Vec::new();
+        if config.show_datetime {
+            let now = chrono::Local::now();
+            right_parts.push(now.format("%a %-d %b %Y %H:%M").to_string());
+        }
         if config.show_page_numbers {
-            let page_str = format!("{page_number}");
-            let text_width = self.measure_label(&page_str, header_size);
+            right_parts.push(format!("{page_number}"));
+        }
+        if !right_parts.is_empty() {
+            let right_text = right_parts.join("  ·  ");
+            let text_width = self.measure_label(&right_text, header_size);
             self.push_command(DrawCommand::Label {
-                text: page_str,
+                text: right_text,
                 x: left + width - text_width,
                 y: header_y + header_size,
                 size: header_size,

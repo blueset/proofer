@@ -104,19 +104,8 @@ fn render_command(
             }));
             surface.set_stroke(None);
 
-            if glyphs.len() == 1 {
-                // Single glyph (glyph grid): outlined for exact metric alignment
-                let krilla_glyph = KrillaGlyph::new(
-                    GlyphId::new(glyphs[0].glyph_id),
-                    0.0, 0.0, 0.0, 0.0,
-                    0..text.len(),
-                    None,
-                );
-                surface.draw_glyphs(
-                    start, &[krilla_glyph], krilla_font, text, font_size, true,
-                );
-            } else {
-                // Multi-glyph text: CID text path (outlined=false).
+            {
+                // All glyphs use CID text path (outlined=false).
                 // The vendored subsetter fixes variable font LSB values,
                 // so glyph outlines are correctly positioned.
                 let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());

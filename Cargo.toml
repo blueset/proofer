@@ -43,6 +43,7 @@ unicode-script = "0.5"
 # Utilities
 thiserror = "2"
 bitflags = "2"
+chrono = "0.4"
 
 # CLI
 clap = { version = "4", features = ["derive"] }

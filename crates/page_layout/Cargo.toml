@@ -12,4 +12,5 @@ content_resolver = { workspace = true }
 text_flow = { workspace = true }
 proof_model = { workspace = true }
 skrifa = { workspace = true }
+chrono = { workspace = true }
 thiserror = { workspace = true }
