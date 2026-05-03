@@ -56,3 +56,6 @@ content_resolver = { path = "crates/content_resolver" }
 text_flow = { path = "crates/text_flow" }
 page_layout = { path = "crates/page_layout" }
 pdf_renderer = { path = "crates/pdf_renderer" }
+
+[patch.crates-io]
+subsetter = { path = "vendor/subsetter" }

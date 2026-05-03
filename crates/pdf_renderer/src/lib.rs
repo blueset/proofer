@@ -105,7 +105,7 @@ fn render_command(
             surface.set_stroke(None);
 
             if glyphs.len() == 1 {
-                // Single glyph (glyph grid): outlined for metric alignment
+                // Single glyph (glyph grid): outlined for exact metric alignment
                 let krilla_glyph = KrillaGlyph::new(
                     GlyphId::new(glyphs[0].glyph_id),
                     0.0, 0.0, 0.0, 0.0,
@@ -116,16 +116,9 @@ fn render_command(
                     start, &[krilla_glyph], krilla_font, text, font_size, true,
                 );
             } else {
-                // Multi-glyph text: use CID text path.
-                // For variable fonts, compute an LSB correction offset per glyph
-                // to compensate for the subsetter writing default-instance LSB
-                // values instead of variation-interpolated ones.
-                let lsb_offsets = if !variations.is_empty() {
-                    compute_lsb_offsets(*font_id, variations, &glyphs, registry)
-                } else {
-                    vec![0.0; glyphs.len()]
-                };
-
+                // Multi-glyph text: CID text path (outlined=false).
+                // The vendored subsetter fixes variable font LSB values,
+                // so glyph outlines are correctly positioned.
                 let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::with_capacity(glyphs.len());
                 for (i, g) in glyphs.iter().enumerate() {
                     let x_advance_pts = if i + 1 < glyphs.len() {
@@ -138,18 +131,10 @@ fn render_command(
                     let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
                     let range_start = snap_to_char_boundary(text, raw_start);
                     let range_end = snap_to_char_boundary(text, raw_end);
-
-                    // LSB offset: shift glyph to compensate for wrong LSB in
-                    // the subsetted font. Normalized by font_size since krilla
-                    // multiplies x_offset by font_size internally.
-                    let x_offset = lsb_offsets[i] / font_size;
-
                     krilla_glyphs.push(KrillaGlyph::new(
                         GlyphId::new(g.glyph_id),
                         x_advance_pts / font_size,
-                        x_offset,
-                        0.0,
-                        0.0,
+                        0.0, 0.0, 0.0,
                         range_start..range_end,
                         None,
                     ));
@@ -336,100 +321,6 @@ fn color_to_paint(c: Color) -> rgb::Color {
 /// The subsetted font has default LSB baked into glyph outlines.
 /// The correct LSB at the variation location differs. This offset
 /// shifts each glyph's rendering position to compensate.
-fn compute_lsb_offsets(
-    font_id: FontId,
-    variations: &[(String, f32)],
-    glyphs: &[layout_ir::PositionedGlyph],
-    registry: &FontRegistry,
-) -> Vec<f32> {
-    use skrifa::MetadataProvider;
-
-    let font = match registry.font_ref(font_id) {
-        Ok(f) => f,
-        Err(_) => return vec![0.0; glyphs.len()],
-    };
-
-    let upm = font
-        .metrics(skrifa::prelude::Size::unscaled(), skrifa::prelude::LocationRef::default())
-        .units_per_em as f32;
-
-    // Default instance metrics
-    let default_gm = font.glyph_metrics(
-        skrifa::prelude::Size::unscaled(),
-        skrifa::prelude::LocationRef::default(),
-    );
-
-    // Variation instance metrics
-    let var_settings: Vec<(&str, f32)> = variations
-        .iter()
-        .map(|(tag, val)| (tag.as_str(), *val))
-        .collect();
-    let location = font.axes().location(var_settings.iter().copied());
-    let loc_ref: skrifa::prelude::LocationRef<'_> = (&location).into();
-    let var_gm = font.glyph_metrics(skrifa::prelude::Size::unscaled(), loc_ref);
-
-    glyphs
-        .iter()
-        .map(|g| {
-            let gid = skrifa::GlyphId::new(g.glyph_id);
-            let lsb_default = default_gm.left_side_bearing(gid).unwrap_or(0.0);
-
-            // skrifa's left_side_bearing() doesn't interpolate for variable
-            // fonts — it returns the default instance value at all locations.
-            // Compute the true LSB by drawing the outline at the variation
-            // location and using the bounding box xMin.
-            let lsb_correct = {
-                let outlines = font.outline_glyphs();
-                if let Some(outline_glyph) = outlines.get(gid) {
-                    let settings = skrifa::outline::DrawSettings::unhinted(
-                        skrifa::prelude::Size::unscaled(),
-                        loc_ref,
-                    );
-                    let mut pen = BoundsCapturePen::new();
-                    if outline_glyph.draw(settings, &mut pen).is_ok() {
-                        pen.x_min.unwrap_or(lsb_default)
-                    } else {
-                        lsb_default
-                    }
-                } else {
-                    lsb_default
-                }
-            };
-
-            (lsb_correct - lsb_default) / upm
-        })
-        .collect()
-}
-
-/// Simple pen that captures the xMin of glyph outlines.
-struct BoundsCapturePen {
-    x_min: Option<f32>,
-}
-
-impl BoundsCapturePen {
-    fn new() -> Self {
-        Self { x_min: None }
-    }
-    fn track(&mut self, x: f32) {
-        self.x_min = Some(self.x_min.map_or(x, |m: f32| m.min(x)));
-    }
-}
-
-impl skrifa::outline::OutlinePen for BoundsCapturePen {
-    fn move_to(&mut self, x: f32, _y: f32) { self.track(x); }
-    fn line_to(&mut self, x: f32, _y: f32) { self.track(x); }
-    fn quad_to(&mut self, cx: f32, _cy: f32, x: f32, _y: f32) {
-        self.track(cx);
-        self.track(x);
-    }
-    fn curve_to(&mut self, cx0: f32, _cy0: f32, cx1: f32, _cy1: f32, x: f32, _y: f32) {
-        self.track(cx0);
-        self.track(cx1);
-        self.track(x);
-    }
-    fn close(&mut self) {}
-}
-
 /// Snap a byte index to the nearest valid char boundary in a UTF-8 string.
 fn snap_to_char_boundary(s: &str, index: usize) -> usize {
     if index >= s.len() {
