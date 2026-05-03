@@ -89,6 +89,24 @@ impl<'a> ContentResolver<'a> {
                 Ok(ResolvedContent::Text(text))
             }
 
+            ContentSpec::Concat { parts, joiner } => {
+                let mut texts = Vec::new();
+                for part in parts {
+                    match self.resolve(part, font_id)? {
+                        ResolvedContent::Text(t) => texts.push(t),
+                        ResolvedContent::Glyphs(glyphs) => {
+                            // Convert glyphs to text for concatenation
+                            let t: String = glyphs
+                                .iter()
+                                .filter_map(|g| g.codepoint)
+                                .collect();
+                            texts.push(t);
+                        }
+                    }
+                }
+                Ok(ResolvedContent::Text(texts.join(joiner)))
+            }
+
             ContentSpec::Custom { text } => Ok(ResolvedContent::Text(text.clone())),
         }
     }

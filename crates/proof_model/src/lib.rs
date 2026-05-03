@@ -504,12 +504,24 @@ pub enum ContentSpec {
         #[serde(default)]
         separator: PatternSeparator,
     },
+    /// Concatenate multiple content specs into one.
+    Concat {
+        /// Content parts to concatenate in order.
+        parts: Vec<ContentSpec>,
+        /// Joiner string between parts (default: "\n").
+        #[serde(default = "default_concat_joiner")]
+        joiner: String,
+    },
     /// Custom user-provided content.
     Custom { text: String },
 }
 
 fn default_placeholder() -> String {
     "?".to_string()
+}
+
+fn default_concat_joiner() -> String {
+    "\n".to_string()
 }
 
 /// A set of glyphs — either a literal string or a preset from the font.
