@@ -557,6 +557,7 @@ fn render_cell(
             glyph_id: cell.glyph_id,
             x: origin_x,
             y: baseline_y,
+            y_offset: 0.0,
         }],
         text: cell.codepoint.map(|c| c.to_string()).unwrap_or_default(),
         variations: variations.to_vec(),

@@ -213,6 +213,7 @@ impl TextFlow {
                         glyph_id: g.glyph_id,
                         x: g.x + x_offset,
                         y,
+                        y_offset: g.y_offset,
                     })
                     .collect();
 
@@ -427,12 +428,16 @@ fn shape_with_parley(
             if let parley::layout::PositionedLayoutItem::GlyphRun(glyph_run) = item {
                 let mut glyphs = Vec::new();
                 let text_range = glyph_run.run().text_range();
+                let run_baseline = glyph_run.baseline();
 
                 for g in glyph_run.positioned_glyphs() {
                     glyphs.push(PositionedGlyph {
                         glyph_id: g.id as u32,
                         x: g.x,
-                        y: 0.0, // y is handled during consumption via baseline
+                        y: 0.0, // baseline y is set during lines_to_commands
+                        // Subtract run baseline to isolate mark-specific offset
+                        // (positioned_glyphs adds the line baseline to g.y)
+                        y_offset: g.y - run_baseline,
                     });
                 }
 
@@ -546,6 +551,7 @@ fn shape_simple(
                     glyph_id: gid.to_u32(),
                     x: current_x + tracking_offset,
                     y: 0.0,
+                    y_offset: 0.0,
                 });
             }
             current_x += advance + tracking_offset;
@@ -570,6 +576,7 @@ fn shape_simple(
                     glyph_id: gid.to_u32(),
                     x: current_x + word_width + tracking_offset,
                     y: 0.0,
+                    y_offset: 0.0,
                 });
             }
             word_width += advance + tracking_offset;

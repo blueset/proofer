@@ -120,10 +120,14 @@ fn render_command(
                     let raw_end = ((i + 1) * text_len / glyphs.len().max(1)).min(text_len);
                     let range_start = snap_to_char_boundary(text, raw_start);
                     let range_end = snap_to_char_boundary(text, raw_end);
+
+                    // Negate parley's y_offset: parley uses y-down, KrillaGlyph uses font coords (y-up)
+                    let y_off = -g.y_offset / font_size;
+
                     krilla_glyphs.push(KrillaGlyph::new(
                         GlyphId::new(g.glyph_id),
                         x_advance_pts / font_size,
-                        0.0, 0.0, 0.0,
+                        0.0, y_off, 0.0,
                         range_start..range_end,
                         None,
                     ));

@@ -58,12 +58,15 @@ impl Page {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FontId(pub u32);
 
-/// A positioned glyph: (glyph_id, x, y).
+/// A positioned glyph: (glyph_id, x, y) plus optional offsets.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PositionedGlyph {
     pub glyph_id: u32,
     pub x: f32,
     pub y: f32,
+    /// Per-glyph y offset from baseline (e.g., for mark attachment). Negative = above baseline.
+    #[serde(default)]
+    pub y_offset: f32,
 }
 
 /// Drawing commands that make up a page.
