@@ -58,16 +58,6 @@ impl CellData {
     }
 }
 
-fn compute_cell_data(
-    glyphs: &[GlyphInfo],
-    font_id: FontId,
-    font_size: f32,
-    inspector: &FontInspector<'_>,
-    registry: &FontRegistry,
-) -> Vec<CellData> {
-    compute_cell_data_with_location(glyphs, font_id, font_size, skrifa::prelude::LocationRef::default(), registry)
-}
-
 fn compute_cell_data_with_location(
     glyphs: &[GlyphInfo],
     font_id: FontId,
@@ -176,7 +166,6 @@ pub fn layout(
     let loc_ref: skrifa::prelude::LocationRef<'_> = (&location).into();
 
     let font_size = design_attrs.font_size;
-    let size = skrifa::prelude::Size::new(font_size);
     let metrics = font.metrics(skrifa::prelude::Size::unscaled(), loc_ref);
     let scale = font_size / metrics.units_per_em as f32;
     let ascent = metrics.ascent * scale;
