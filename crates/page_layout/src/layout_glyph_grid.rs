@@ -623,7 +623,6 @@ fn layout_compact(
         outer_w: f32,
         outer_h: f32,
         col_widths: Vec<f32>,
-        row_extents: RowExtents,
     }
 
     let glyph_dims: Vec<GlyphDims> = cells
@@ -644,7 +643,6 @@ fn layout_compact(
                 outer_w: inner_w + padding * 2.0,
                 outer_h: matrix_h + padding * 2.0 + label_height,
                 col_widths,
-                row_extents,
             }
         })
         .collect();
@@ -654,6 +652,7 @@ fn layout_compact(
         indices: Vec<usize>,
         natural_width: f32,
         height: f32,
+        row_extents: RowExtents,
     }
     let mut rows: Vec<RowInfo> = Vec::new();
     let mut cell_idx = 0;
@@ -676,7 +675,15 @@ fn layout_compact(
         }
 
         let natural_width: f32 = indices.iter().map(|&i| glyph_dims[i].outer_w).sum();
-        rows.push(RowInfo { indices, natural_width, height: row_height });
+        let row_extents = compute_row_extents(
+            indices.iter().map(|&i| &cells[i]),
+            metrics_matrix,
+            n_rows,
+            n_cols,
+        );
+        let shared_matrix_h = row_extents.total_height(sub_gap);
+        row_height = row_height.max(shared_matrix_h + padding * 2.0 + label_height);
+        rows.push(RowInfo { indices, natural_width, height: row_height, row_extents });
     }
 
     let total_rows = rows.len();
@@ -781,7 +788,7 @@ fn layout_compact(
                     row.height,
                     content_area_w,
                     &dims.col_widths,
-                    &dims.row_extents,
+                    &row.row_extents,
                     metrics_matrix,
                     variation_matrix,
                     font_id,
