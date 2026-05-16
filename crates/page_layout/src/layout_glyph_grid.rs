@@ -3,7 +3,7 @@
 //! Each glyph is shown in its own cell with:
 //! - The glyph shape at the configured font size
 //! - Horizontal metric lines (ascender, cap-height, baseline, descender)
-//! - Vertical side bearing indicators (left/right at glyph origin and advance)
+//! - Side bearing indicators (left/right at glyph origin and advance)
 //! - Glyph name label below the glyph area
 //!
 //! Grid mode: uniform cell size, table-aligned.
@@ -23,6 +23,7 @@ use font_inspector::{FontInspector, GlyphInfo};
 use font_registry::{FontId, FontRegistry};
 use layout_ir::{Color, DrawCommand, PositionedGlyph, StrokeStyle};
 use proof_model::{DesignAttributes, GlyphGridMode, SubgridAxis};
+use skrifa::raw::TableProvider;
 use skrifa::MetadataProvider;
 
 use crate::{LayoutError, PageAllocator};
@@ -34,6 +35,8 @@ const METRIC_LINES: Color = Color { r: 0.82, g: 0.82, b: 0.82, a: 1.0 };
 const LABEL_COLOR: Color = Color { r: 0.5, g: 0.5, b: 0.5, a: 1.0 };
 const LABEL_SIZE: f32 = 5.0;
 const ROW_GAP: f32 = 8.0;
+const SLNT_AXIS_TAG: &str = "slnt";
+const SLANT_EPSILON: f32 = 0.001;
 /// Spacing between sub-cells within a single glyph's matrix, as a fraction
 /// of the proof's font size.
 const SUB_GAP_FRACTION: f32 = 0.15;
@@ -68,6 +71,38 @@ struct SubMetrics {
     descent: f32,
     cap_height: Option<f32>,
     x_height: Option<f32>,
+    slant: Option<MetricSlant>,
+}
+
+/// Slant geometry for metric guides in a single sub-cell.
+#[derive(Clone, Copy)]
+struct MetricSlant {
+    slope: f32,
+    caret_offset: f32,
+}
+
+impl MetricSlant {
+    fn new(angle_degrees: f32, caret_offset: f32) -> Option<Self> {
+        if angle_degrees.abs() <= SLANT_EPSILON {
+            return None;
+        }
+
+        let slope = angle_degrees.to_radians().tan();
+        Self::from_slope(slope, caret_offset)
+    }
+
+    fn from_slope(slope: f32, caret_offset: f32) -> Option<Self> {
+        if slope.abs() <= SLANT_EPSILON {
+            return None;
+        }
+
+        slope.is_finite().then_some(Self { slope, caret_offset })
+    }
+
+    fn x_at_y(&self, base_x: f32, baseline_y: f32, guide_y: f32) -> f32 {
+        let y_above_baseline = baseline_y - guide_y;
+        base_x + self.caret_offset + self.slope * y_above_baseline
+    }
 }
 
 /// Per-glyph data: identity, label, and the R×C matrix of sub-cell ink data.
@@ -110,6 +145,60 @@ fn build_variation_matrix(
         matrix.push(row);
     }
     matrix
+}
+
+fn slnt_axis_angle(variations: &[(String, f32)]) -> Option<f32> {
+    variations
+        .iter()
+        .find(|(tag, _)| tag == SLNT_AXIS_TAG)
+        .map(|(_, value)| *value)
+}
+
+fn metric_slant_for(
+    variations: &[(String, f32)],
+    fallback_angle: Option<f32>,
+    caret_offset: f32,
+    caret_slope: Option<f32>,
+) -> Option<MetricSlant> {
+    match slnt_axis_angle(variations) {
+        // OpenType slnt uses negative values for right-leaning designs; the
+        // guide geometry uses positive angles to move tops rightward. Prefer
+        // MVAR's varied caret slope when present because it is the font's
+        // exact instance metric for this geometry.
+        Some(slnt_angle) => caret_slope
+            .and_then(|slope| MetricSlant::from_slope(slope, caret_offset))
+            .or_else(|| MetricSlant::new(-slnt_angle, caret_offset)),
+        None => MetricSlant::new(fallback_angle?, caret_offset),
+    }
+}
+
+fn mvar_metric_delta(
+    font: &skrifa::prelude::FontRef<'_>,
+    tag: skrifa::Tag,
+    coords: &[skrifa::instance::NormalizedCoord],
+) -> f32 {
+    font.mvar()
+        .ok()
+        .and_then(|mvar| mvar.metric_delta(tag, coords).ok())
+        .map(|delta| delta.to_f64() as f32)
+        .unwrap_or(0.0)
+}
+
+fn varied_caret_slope(
+    font: &skrifa::prelude::FontRef<'_>,
+    coords: &[skrifa::instance::NormalizedCoord],
+    base_rise: f32,
+    base_run: f32,
+) -> Option<f32> {
+    let rise = base_rise
+        + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRS, coords);
+    if rise.abs() <= SLANT_EPSILON {
+        return None;
+    }
+
+    let run = base_run
+        + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRN, coords);
+    MetricSlant::from_slope(run / rise, 0.0).map(|slant| slant.slope)
 }
 
 // ── Per-(glyph, sub-cell) metric computation ────────────────────────
@@ -270,19 +359,58 @@ pub fn layout(
         })
         .collect();
 
+    let fallback_italic_angle = font
+        .post()
+        .ok()
+        .map(|post| post.italic_angle().to_f32())
+        .filter(|angle| angle.abs() > SLANT_EPSILON);
+    let caret_offset_units = font
+        .hhea()
+        .ok()
+        .map(|hhea| hhea.caret_offset() as f32)
+        .unwrap_or(0.0);
+    let (caret_slope_rise_units, caret_slope_run_units) = font
+        .hhea()
+        .ok()
+        .map(|hhea| {
+            (
+                hhea.caret_slope_rise() as f32,
+                hhea.caret_slope_run() as f32,
+            )
+        })
+        .unwrap_or((1.0, 0.0));
+
     // Per-(r, c) font metrics evaluated at each sub-cell's location.
     let mut metrics_matrix: Vec<Vec<SubMetrics>> = Vec::with_capacity(n_rows);
-    for row_locs in &locations {
+    for (row_index, row_locs) in locations.iter().enumerate() {
         let mut row = Vec::with_capacity(n_cols);
-        for loc in row_locs {
+        for (col_index, loc) in row_locs.iter().enumerate() {
             let loc_ref = skrifa::prelude::LocationRef::from(loc);
             let m = font.metrics(skrifa::prelude::Size::unscaled(), loc_ref);
             let scale = font_size / m.units_per_em as f32;
+            let caret_offset = (caret_offset_units
+                + mvar_metric_delta(
+                    &font,
+                    skrifa::raw::tables::mvar::tags::HCOF,
+                    loc_ref.coords(),
+                )) * scale;
+            let caret_slope = varied_caret_slope(
+                &font,
+                loc_ref.coords(),
+                caret_slope_rise_units,
+                caret_slope_run_units,
+            );
             row.push(SubMetrics {
                 ascent: m.ascent * scale,
                 descent: -m.descent * scale,
                 cap_height: m.cap_height.map(|h| h * scale),
                 x_height: m.x_height.map(|h| h * scale),
+                slant: metric_slant_for(
+                    &variation_matrix[row_index][col_index],
+                    fallback_italic_angle,
+                    caret_offset,
+                    caret_slope,
+                ),
             });
         }
         metrics_matrix.push(row);
@@ -783,13 +911,55 @@ fn render_glyph_cell(
 
 // ── Render a single sub-cell (metric lines, side bearings, glyph) ───
 
+fn slanted_x(base_x: f32, guide_y: f32, baseline_y: f32, slant: Option<MetricSlant>) -> f32 {
+    slant.map_or(base_x, |metric_slant| {
+        metric_slant.x_at_y(base_x, baseline_y, guide_y)
+    })
+}
+
+fn push_metric_guide(
+    allocator: &mut PageAllocator,
+    left_x: f32,
+    right_x: f32,
+    guide_y: f32,
+    baseline_y: f32,
+    slant: Option<MetricSlant>,
+    stroke: StrokeStyle,
+) {
+    allocator.push_command(DrawCommand::Line {
+        x1: slanted_x(left_x, guide_y, baseline_y, slant),
+        y1: guide_y,
+        x2: slanted_x(right_x, guide_y, baseline_y, slant),
+        y2: guide_y,
+        stroke,
+    });
+}
+
+fn push_side_bearing_guide(
+    allocator: &mut PageAllocator,
+    base_x: f32,
+    top_y: f32,
+    bottom_y: f32,
+    baseline_y: f32,
+    slant: Option<MetricSlant>,
+    stroke: StrokeStyle,
+) {
+    allocator.push_command(DrawCommand::Line {
+        x1: slanted_x(base_x, top_y, baseline_y, slant),
+        y1: top_y,
+        x2: slanted_x(base_x, bottom_y, baseline_y, slant),
+        y2: bottom_y,
+        stroke,
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_sub_cell(
     allocator: &mut PageAllocator,
     glyph_id: u32,
     codepoint: Option<char>,
-    s: &SubCellData,
-    m: SubMetrics,
+    sub_cell: &SubCellData,
+    metrics: SubMetrics,
     baseline_y: f32,
     origin_x: f32,
     font_id: FontId,
@@ -801,59 +971,94 @@ fn render_sub_cell(
         let stroke_metric = StrokeStyle::new(0.25, METRIC_LINES);
         let stroke_baseline = StrokeStyle::new(0.25, METRIC_BASELINE);
 
-        let line_left = origin_x + s.ink_left;
-        let line_right = origin_x + s.ink_right;
+        let line_left = origin_x + sub_cell.ink_left;
+        let line_right = origin_x + sub_cell.ink_right;
 
         // Ascender
-        let asc_y = baseline_y - m.ascent;
-        allocator.push_command(DrawCommand::Line {
-            x1: line_left, y1: asc_y, x2: line_right, y2: asc_y,
-            stroke: stroke_metric,
-        });
+        let asc_y = baseline_y - metrics.ascent;
+        push_metric_guide(
+            allocator,
+            line_left,
+            line_right,
+            asc_y,
+            baseline_y,
+            metrics.slant,
+            stroke_metric,
+        );
 
-        if let Some(ch) = m.cap_height {
+        if let Some(ch) = metrics.cap_height {
             let ch_y = baseline_y - ch;
-            allocator.push_command(DrawCommand::Line {
-                x1: line_left, y1: ch_y, x2: line_right, y2: ch_y,
-                stroke: stroke_metric,
-            });
+            push_metric_guide(
+                allocator,
+                line_left,
+                line_right,
+                ch_y,
+                baseline_y,
+                metrics.slant,
+                stroke_metric,
+            );
         }
 
-        if let Some(xh) = m.x_height {
+        if let Some(xh) = metrics.x_height {
             let xh_y = baseline_y - xh;
-            allocator.push_command(DrawCommand::Line {
-                x1: line_left, y1: xh_y, x2: line_right, y2: xh_y,
-                stroke: stroke_metric,
-            });
+            push_metric_guide(
+                allocator,
+                line_left,
+                line_right,
+                xh_y,
+                baseline_y,
+                metrics.slant,
+                stroke_metric,
+            );
         }
 
         // Baseline (slightly darker)
-        allocator.push_command(DrawCommand::Line {
-            x1: line_left, y1: baseline_y, x2: line_right, y2: baseline_y,
-            stroke: stroke_baseline,
-        });
+        push_metric_guide(
+            allocator,
+            line_left,
+            line_right,
+            baseline_y,
+            baseline_y,
+            metrics.slant,
+            stroke_baseline,
+        );
 
         // Descender
-        let desc_y = baseline_y + m.descent;
-        allocator.push_command(DrawCommand::Line {
-            x1: line_left, y1: desc_y, x2: line_right, y2: desc_y,
-            stroke: stroke_metric,
-        });
+        let desc_y = baseline_y + metrics.descent;
+        push_metric_guide(
+            allocator,
+            line_left,
+            line_right,
+            desc_y,
+            baseline_y,
+            metrics.slant,
+            stroke_metric,
+        );
 
-        // Side bearings (vertical lines at glyph origin and origin+advance)
-        let glyph_area_top = baseline_y - m.ascent - 2.0;
-        let glyph_area_bottom = baseline_y + m.descent + 2.0;
+        // Side bearings at glyph origin and origin+advance.
+        let glyph_area_top = baseline_y - metrics.ascent - 2.0;
+        let glyph_area_bottom = baseline_y + metrics.descent + 2.0;
 
-        allocator.push_command(DrawCommand::Line {
-            x1: origin_x, y1: glyph_area_top, x2: origin_x, y2: glyph_area_bottom,
-            stroke: stroke_metric,
-        });
+        push_side_bearing_guide(
+            allocator,
+            origin_x,
+            glyph_area_top,
+            glyph_area_bottom,
+            baseline_y,
+            metrics.slant,
+            stroke_metric,
+        );
 
-        let rsb_x = origin_x + s.advance;
-        allocator.push_command(DrawCommand::Line {
-            x1: rsb_x, y1: glyph_area_top, x2: rsb_x, y2: glyph_area_bottom,
-            stroke: stroke_metric,
-        });
+        let rsb_x = origin_x + sub_cell.advance;
+        push_side_bearing_guide(
+            allocator,
+            rsb_x,
+            glyph_area_top,
+            glyph_area_bottom,
+            baseline_y,
+            metrics.slant,
+            stroke_metric,
+        );
     }
 
     allocator.push_command(DrawCommand::GlyphRun {
@@ -868,4 +1073,43 @@ fn render_sub_cell(
         text: codepoint.map(|c| c.to_string()).unwrap_or_default(),
         variations: variations.to_vec(),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_approx_eq(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 0.01,
+            "expected {actual} to be within 0.01 of {expected}"
+        );
+    }
+
+    #[test]
+    fn metric_slant_uses_caret_offset_and_height_above_baseline() {
+        let slant = MetricSlant::new(9.462322, -45.0).unwrap();
+        let baseline_y = 0.0;
+        let top_y = -525.0;
+
+        assert_approx_eq(slant.x_at_y(55.0, baseline_y, baseline_y), 10.0);
+        assert_approx_eq(
+            slant.x_at_y(55.0, baseline_y, top_y),
+            55.0 + -45.0 + 9.462322_f32.to_radians().tan() * 525.0,
+        );
+    }
+
+    #[test]
+    fn explicit_slnt_value_wins_over_post_italic_angle() {
+        let upright_slnt = vec![(SLNT_AXIS_TAG.to_string(), 0.0)];
+        assert!(metric_slant_for(&upright_slnt, Some(9.0), -45.0, None).is_none());
+
+        let tilted_slnt = vec![(SLNT_AXIS_TAG.to_string(), -5.0)];
+        let slant = metric_slant_for(&tilted_slnt, Some(9.0), -45.0, None).unwrap();
+        assert_approx_eq(slant.slope, 5.0_f32.to_radians().tan());
+        assert_approx_eq(slant.x_at_y(55.0, 0.0, 0.0), 10.0);
+
+        let mvar_slant = metric_slant_for(&tilted_slnt, Some(9.0), -45.0, Some(0.167)).unwrap();
+        assert_approx_eq(mvar_slant.slope, 0.167);
+    }
 }
