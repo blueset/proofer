@@ -87,15 +87,20 @@ impl<'a> FontInspector<'a> {
 
     /// Enumerate all glyphs in the font via the charmap.
     pub fn enumerate_glyphs(&self, font_id: FontId) -> Result<Vec<GlyphInfo>, InspectorError> {
+        use skrifa::raw::TableProvider;
+
         let font = self.registry.font_ref(font_id)?;
         let charmap = font.charmap();
+        let post = font.post().ok();
         let mut glyphs = Vec::new();
 
         for (codepoint, glyph_id) in charmap.mappings() {
+            let gid = glyph_id.to_u32();
+            let codepoint = char::from_u32(codepoint);
             glyphs.push(GlyphInfo {
-                glyph_id: glyph_id.to_u32(),
-                codepoint: char::from_u32(codepoint),
-                name: None,
+                glyph_id: gid,
+                codepoint,
+                name: resolve_glyph_name(post.as_ref(), gid, codepoint),
             });
         }
 
@@ -129,28 +134,10 @@ impl<'a> FontInspector<'a> {
         let mut glyphs = Vec::with_capacity(glyph_count as usize);
         for gid in 0..glyph_count {
             let codepoint = reverse_cmap.get(&gid).copied();
-
-            // Priority: post table name → codepoint-derived name → GID fallback
-            let name = post
-                .as_ref()
-                .and_then(|p| {
-                    p.glyph_name(skrifa::GlyphId16::new(gid as u16))
-                        .map(|s| s.to_string())
-                })
-                .or_else(|| {
-                    codepoint.map(|c| {
-                        if c.is_ascii_graphic() {
-                            c.to_string()
-                        } else {
-                            format!("U+{:04X}", c as u32)
-                        }
-                    })
-                });
-
             glyphs.push(GlyphInfo {
                 glyph_id: gid,
                 codepoint,
-                name,
+                name: resolve_glyph_name(post.as_ref(), gid, codepoint),
             });
         }
 
@@ -315,6 +302,28 @@ impl<'a> FontInspector<'a> {
 
         Ok(features)
     }
+}
+
+/// Resolve a glyph name from (in priority order) the post table,
+/// a codepoint-derived label, or `None` if neither is available.
+fn resolve_glyph_name(
+    post: Option<&skrifa::raw::tables::post::Post<'_>>,
+    gid: u32,
+    codepoint: Option<char>,
+) -> Option<String> {
+    post.and_then(|p| {
+        p.glyph_name(skrifa::GlyphId16::new(gid as u16))
+            .map(|s| s.to_string())
+    })
+    .or_else(|| {
+        codepoint.map(|c| {
+            if c.is_ascii_graphic() {
+                c.to_string()
+            } else {
+                format!("U+{:04X}", c as u32)
+            }
+        })
+    })
 }
 
 /// Map a feature tag to a human-readable name.

@@ -450,6 +450,8 @@ pub fn layout_document(
                 show_metrics,
                 show_names,
                 cell_padding,
+                subgrid_x,
+                subgrid_y,
             } => {
                 layout_glyph_grid::layout(
                     &mut allocator,
@@ -459,6 +461,8 @@ pub fn layout_document(
                     *show_metrics,
                     *show_names,
                     *cell_padding,
+                    subgrid_x.as_ref(),
+                    subgrid_y.as_ref(),
                     primary_font_id,
                     registry,
                 )?;

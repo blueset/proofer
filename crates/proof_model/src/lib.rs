@@ -96,6 +96,36 @@ impl ProofDocument {
                     errors.push(format!("section {}: variation tag '{}' must be exactly 4 characters", i, tag));
                 }
             }
+            if let LayoutType::GlyphGrid { subgrid_x, subgrid_y, .. } = &section.layout {
+                let validate_axis = |axis: &SubgridAxis, side: &str, errs: &mut Vec<String>| {
+                    if axis.axis.len() != 4 {
+                        errs.push(format!(
+                            "section {}: GlyphGrid subgrid_{} axis tag '{}' must be exactly 4 characters",
+                            i, side, axis.axis
+                        ));
+                    }
+                    if axis.values.is_empty() {
+                        errs.push(format!(
+                            "section {}: GlyphGrid subgrid_{} must have at least one value",
+                            i, side
+                        ));
+                    }
+                };
+                if let Some(sx) = subgrid_x {
+                    validate_axis(sx, "x", &mut errors);
+                }
+                if let Some(sy) = subgrid_y {
+                    validate_axis(sy, "y", &mut errors);
+                }
+                if let (Some(sx), Some(sy)) = (subgrid_x, subgrid_y) {
+                    if sx.axis == sy.axis {
+                        errors.push(format!(
+                            "section {}: GlyphGrid subgrid_x and subgrid_y must use different axes (both are '{}')",
+                            i, sx.axis
+                        ));
+                    }
+                }
+            }
         }
         errors
     }
@@ -407,6 +437,15 @@ pub enum LayoutType {
         /// Cell padding in points.
         #[serde(default = "default_cell_padding")]
         cell_padding: f32,
+        /// Optional variation-axis subgrid along the X (column) direction.
+        /// When set, each glyph cell becomes a row of sub-cells, one per value.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subgrid_x: Option<SubgridAxis>,
+        /// Optional variation-axis subgrid along the Y (row) direction.
+        /// When set, each glyph cell becomes a column of sub-cells, one per value.
+        /// Combined with `subgrid_x`, the cell becomes a 2D matrix of variations.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subgrid_y: Option<SubgridAxis>,
     },
 
     /// Side-by-side style comparison.
@@ -450,6 +489,20 @@ fn default_comparison_spacing() -> f32 {
 pub enum GlyphGridMode {
     Grid,
     Compact,
+}
+
+/// A single variation axis used to drive a glyph-grid subgrid.
+///
+/// When attached to `LayoutType::GlyphGrid` via `subgrid_x` / `subgrid_y`,
+/// each glyph cell is rendered as a matrix of instances by combining the
+/// row/column values with `design_attrs.variations` (subgrid values silently
+/// override matching tags).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SubgridAxis {
+    /// Variation axis tag (4 ASCII characters, e.g. "wght" or "wdth").
+    pub axis: String,
+    /// Axis values, in display order. Must contain at least one value.
+    pub values: Vec<f32>,
 }
 
 /// How styles are arranged in a comparison.
@@ -738,6 +791,8 @@ pub fn example_document() -> ProofDocument {
                     show_metrics: true,
                     show_names: true,
                     cell_padding: 4.0,
+                    subgrid_x: None,
+                    subgrid_y: None,
                 },
                 content: ContentSpec::AllGlyphs,
                 design_attrs: DesignAttributes {

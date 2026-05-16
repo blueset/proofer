@@ -98,6 +98,8 @@ mod tests {
                         show_metrics: true,
                         show_names: true,
                         cell_padding: 4.0,
+                        subgrid_x: None,
+                        subgrid_y: None,
                     },
                     content: ContentSpec::AllGlyphs,
                     design_attrs: DesignAttributes {
@@ -307,6 +309,8 @@ mod tests {
                     show_metrics: true,
                     show_names: true,
                     cell_padding: 4.0,
+                    subgrid_x: None,
+                    subgrid_y: None,
                 },
                 content: ContentSpec::AllGlyphs,
                 design_attrs: DesignAttributes {
