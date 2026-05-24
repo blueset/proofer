@@ -12,7 +12,7 @@ use layout_ir::{LayoutDocument, Page};
 use proof_model::{DesignAttributes, InterleaveMode};
 use text_flow::TextFlow;
 
-use crate::{build_text_style, LayoutError, PageAllocator, ResolvedStyleVariant};
+use crate::{LayoutError, PageAllocator, ResolvedStyleVariant, build_text_style};
 
 /// Lay out interleaved styles.
 pub fn layout(
@@ -38,7 +38,13 @@ pub fn layout(
     let mut style_docs: Vec<Vec<Page>> = Vec::with_capacity(variants.len());
 
     for variant in variants {
-        let pages = layout_single_style(page_settings, &text, &variant.design_attrs, variant.font_id, registry)?;
+        let pages = layout_single_style(
+            page_settings,
+            &text,
+            &variant.design_attrs,
+            variant.font_id,
+            registry,
+        )?;
         style_docs.push(pages);
     }
 
@@ -76,7 +82,13 @@ fn layout_single_style(
         .unwrap_or_else(|_| "Unknown".to_string());
 
     allocator.push_command(layout_ir::DrawCommand::Label {
-        x: allocator.aligned_label_x(&font_name, 8.0, design_attrs.text_align, allocator.body_left(), max_width),
+        x: allocator.aligned_label_x(
+            &font_name,
+            8.0,
+            design_attrs.text_align,
+            allocator.body_left(),
+            max_width,
+        ),
         text: font_name,
         y: allocator.cursor_y() + 9.0,
         size: 8.0,

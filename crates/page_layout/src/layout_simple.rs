@@ -6,7 +6,7 @@ use layout_ir::DrawCommand;
 use proof_model::DesignAttributes;
 use text_flow::{TextFlow, TextStyle};
 
-use crate::{build_text_style, LayoutError, PageAllocator};
+use crate::{LayoutError, PageAllocator, build_text_style};
 
 pub fn layout(
     allocator: &mut PageAllocator,

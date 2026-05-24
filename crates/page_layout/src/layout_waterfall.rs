@@ -98,7 +98,15 @@ pub fn layout(
             let remaining = allocator.remaining_height();
             if item_height + spacing > remaining {
                 // Emit label for current page before moving on
-                emit_size_label(allocator, &page_sizes, label, label_y, label_size, design_attrs, max_width);
+                emit_size_label(
+                    allocator,
+                    &page_sizes,
+                    label,
+                    label_y,
+                    label_size,
+                    design_attrs,
+                    max_width,
+                );
                 page_sizes.clear();
 
                 // Start new page
@@ -117,7 +125,15 @@ pub fn layout(
             if available <= 0.0 {
                 // Emit label for current page if we haven't yet
                 if !page_sizes.is_empty() {
-                    emit_size_label(allocator, &page_sizes, label, label_y, label_size, design_attrs, max_width);
+                    emit_size_label(
+                        allocator,
+                        &page_sizes,
+                        label,
+                        label_y,
+                        label_size,
+                        design_attrs,
+                        max_width,
+                    );
                     // Don't clear page_sizes — keep current item's size for next page label
                 }
 
@@ -161,7 +177,15 @@ pub fn layout(
 
     // Emit label for the final page
     if !page_sizes.is_empty() {
-        emit_size_label(allocator, &page_sizes, label, label_y, label_size, design_attrs, max_width);
+        emit_size_label(
+            allocator,
+            &page_sizes,
+            label,
+            label_y,
+            label_size,
+            design_attrs,
+            max_width,
+        );
     }
 
     Ok(())
@@ -194,7 +218,13 @@ fn emit_size_label(
         label_text.push_str(ul);
     }
 
-    let x = allocator.aligned_label_x(&label_text, label_size, design_attrs.text_align, allocator.body_left(), max_width);
+    let x = allocator.aligned_label_x(
+        &label_text,
+        label_size,
+        design_attrs.text_align,
+        allocator.body_left(),
+        max_width,
+    );
 
     allocator.push_command(DrawCommand::Label {
         text: label_text,

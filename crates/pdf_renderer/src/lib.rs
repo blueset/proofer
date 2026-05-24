@@ -1,13 +1,13 @@
 //! PDF Renderer — walks Layout IR and emits PDF via krilla.
 
 use font_registry::{FontId, FontRegistry};
+use krilla::Document;
 use krilla::color::rgb;
 use krilla::geom::{PathBuilder, Point, Rect, Transform};
 use krilla::num::NormalizedF32;
 use krilla::page::PageSettings;
 use krilla::paint::{Fill, FillRule, Stroke};
 use krilla::text::{Font, GlyphId, KrillaGlyph, Tag, TextDirection};
-use krilla::Document;
 use layout_ir::{Color, DrawCommand, LayoutDocument};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -127,7 +127,9 @@ fn render_command(
                     krilla_glyphs.push(KrillaGlyph::new(
                         GlyphId::new(g.glyph_id),
                         x_advance_pts / font_size,
-                        0.0, y_off, 0.0,
+                        0.0,
+                        y_off,
+                        0.0,
                         range_start..range_end,
                         None,
                     ));

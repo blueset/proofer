@@ -10,7 +10,7 @@ use layout_ir::{Color, DrawCommand};
 use proof_model::{ComparisonArrangement, ComparisonOverflow, DesignAttributes};
 use text_flow::TextFlow;
 
-use crate::{build_text_style, LayoutError, PageAllocator, ResolvedStyleVariant};
+use crate::{LayoutError, PageAllocator, ResolvedStyleVariant, build_text_style};
 
 /// Lay out a style comparison section.
 pub fn layout(
@@ -38,9 +38,7 @@ pub fn layout(
 
     match arrangement {
         ComparisonArrangement::Columns => {
-            let chunk_size = max_columns
-                .filter(|&n| n > 0)
-                .unwrap_or(variants.len());
+            let chunk_size = max_columns.filter(|&n| n > 0).unwrap_or(variants.len());
 
             for (chunk_idx, chunk) in variants.chunks(chunk_size).enumerate() {
                 if chunk_idx > 0 {
@@ -87,13 +85,21 @@ fn layout_columns(
         let col_x = body_left + i as f32 * (col_width + gutter);
         let label = variant.label.clone().unwrap_or_else(|| {
             let meta = registry.metadata(variant.font_id);
-            let base = meta.map(|m| format!("{} {}", m.family, m.style)).unwrap_or_default();
+            let base = meta
+                .map(|m| format!("{} {}", m.family, m.style))
+                .unwrap_or_default();
             let attrs = &variant.design_attrs;
             format!("{base} {:.0}pt", attrs.font_size)
         });
 
         allocator.push_command(DrawCommand::Label {
-            x: allocator.aligned_label_x(&label, 7.0, variant.design_attrs.text_align, col_x, col_width),
+            x: allocator.aligned_label_x(
+                &label,
+                7.0,
+                variant.design_attrs.text_align,
+                col_x,
+                col_width,
+            ),
             text: label,
             y: header_y + 9.0,
             size: 7.0,
@@ -128,14 +134,26 @@ fn layout_columns_truncate(
     for (i, flow) in flows.iter_mut().enumerate() {
         let col_x = body_left + i as f32 * (col_width + gutter);
         let (lines, _) = flow.consume_into(available);
-        if lines.is_empty() { continue; }
+        if lines.is_empty() {
+            continue;
+        }
 
         let clip_y = allocator.cursor_y();
         let font_size = variants[i].design_attrs.font_size;
-        let commands = TextFlow::lines_to_commands(&lines, col_x, clip_y, text, font_size, &variants[i].design_attrs.variations);
+        let commands = TextFlow::lines_to_commands(
+            &lines,
+            col_x,
+            clip_y,
+            text,
+            font_size,
+            &variants[i].design_attrs.variations,
+        );
 
         allocator.push_command(DrawCommand::Clip {
-            x: col_x, y: clip_y, w: col_width, h: available,
+            x: col_x,
+            y: clip_y,
+            w: col_width,
+            h: available,
             children: commands,
         });
     }
@@ -184,7 +202,11 @@ fn layout_columns_flow(
 
             let font_size = variants[i].design_attrs.font_size;
             let commands = TextFlow::lines_to_commands(
-                &lines, col_x, col_y, text, font_size,
+                &lines,
+                col_x,
+                col_y,
+                text,
+                font_size,
                 &variants[i].design_attrs.variations,
             );
             for cmd in commands {
@@ -246,13 +268,21 @@ fn layout_rows(
 
         let label = variant.label.clone().unwrap_or_else(|| {
             let meta = registry.metadata(variant.font_id);
-            let base = meta.map(|m| format!("{} {}", m.family, m.style)).unwrap_or_default();
+            let base = meta
+                .map(|m| format!("{} {}", m.family, m.style))
+                .unwrap_or_default();
             format!("{base} {:.0}pt", variant.design_attrs.font_size)
         });
 
         allocator.ensure_space(20.0);
         allocator.push_command(DrawCommand::Label {
-            x: allocator.aligned_label_x(&label, 7.0, variant.design_attrs.text_align, allocator.body_left(), body_width),
+            x: allocator.aligned_label_x(
+                &label,
+                7.0,
+                variant.design_attrs.text_align,
+                allocator.body_left(),
+                body_width,
+            ),
             text: label,
             y: allocator.cursor_y() + 9.0,
             size: 7.0,
@@ -270,13 +300,20 @@ fn layout_rows(
                 let (lines, _) = flow.consume_into(available);
                 if !lines.is_empty() {
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &lines,
+                        allocator.body_left(),
+                        allocator.cursor_y(),
+                        text,
+                        font_size,
                         &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
                     allocator.push_command(DrawCommand::Clip {
-                        x: allocator.body_left(), y: allocator.cursor_y(),
-                        w: body_width, h: available, children: commands,
+                        x: allocator.body_left(),
+                        y: allocator.cursor_y(),
+                        w: body_width,
+                        h: available,
+                        children: commands,
                     });
                     allocator.advance(height.min(available));
                 }
@@ -284,15 +321,27 @@ fn layout_rows(
             ComparisonOverflow::Flow => {
                 while flow.has_remaining() {
                     let available = allocator.remaining_height();
-                    if available <= 0.0 { allocator.new_page(); continue; }
+                    if available <= 0.0 {
+                        allocator.new_page();
+                        continue;
+                    }
                     let (lines, _) = flow.consume_into(available);
-                    if lines.is_empty() { allocator.new_page(); continue; }
+                    if lines.is_empty() {
+                        allocator.new_page();
+                        continue;
+                    }
                     let commands = TextFlow::lines_to_commands(
-                        &lines, allocator.body_left(), allocator.cursor_y(), text, font_size,
+                        &lines,
+                        allocator.body_left(),
+                        allocator.cursor_y(),
+                        text,
+                        font_size,
                         &variant.design_attrs.variations,
                     );
                     let height: f32 = lines.iter().map(|l| l.metrics.height()).sum();
-                    for cmd in commands { allocator.push_command(cmd); }
+                    for cmd in commands {
+                        allocator.push_command(cmd);
+                    }
                     allocator.advance(height);
                 }
             }

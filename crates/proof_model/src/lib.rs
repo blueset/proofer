@@ -68,7 +68,11 @@ impl ProofDocument {
         if ps.width() <= 0.0 || ps.height() <= 0.0 {
             errors.push("page dimensions must be positive".into());
         }
-        if ps.margin_top() < 0.0 || ps.margin_bottom() < 0.0 || ps.margin_left() < 0.0 || ps.margin_right() < 0.0 {
+        if ps.margin_top() < 0.0
+            || ps.margin_bottom() < 0.0
+            || ps.margin_left() < 0.0
+            || ps.margin_right() < 0.0
+        {
             errors.push("margins must be non-negative".into());
         }
         if self.fonts.is_empty() {
@@ -77,7 +81,12 @@ impl ProofDocument {
         for (i, section) in self.sections.iter().enumerate() {
             for &idx in &section.font_indices {
                 if idx >= self.fonts.len() {
-                    errors.push(format!("section {}: font_indices[{}] out of range (have {} fonts)", i, idx, self.fonts.len()));
+                    errors.push(format!(
+                        "section {}: font_indices[{}] out of range (have {} fonts)",
+                        i,
+                        idx,
+                        self.fonts.len()
+                    ));
                 }
             }
             if section.font_indices.is_empty() {
@@ -88,15 +97,26 @@ impl ProofDocument {
             }
             for tag in section.design_attrs.features.keys() {
                 if tag.len() != 4 {
-                    errors.push(format!("section {}: feature tag '{}' must be exactly 4 characters", i, tag));
+                    errors.push(format!(
+                        "section {}: feature tag '{}' must be exactly 4 characters",
+                        i, tag
+                    ));
                 }
             }
             for tag in section.design_attrs.variations.keys() {
                 if tag.len() != 4 {
-                    errors.push(format!("section {}: variation tag '{}' must be exactly 4 characters", i, tag));
+                    errors.push(format!(
+                        "section {}: variation tag '{}' must be exactly 4 characters",
+                        i, tag
+                    ));
                 }
             }
-            if let LayoutType::GlyphGrid { subgrid_x, subgrid_y, .. } = &section.layout {
+            if let LayoutType::GlyphGrid {
+                subgrid_x,
+                subgrid_y,
+                ..
+            } = &section.layout
+            {
                 let validate_axis = |axis: &SubgridAxis, side: &str, errs: &mut Vec<String>| {
                     if axis.axis.len() != 4 {
                         errs.push(format!(
@@ -208,7 +228,10 @@ impl PageSettings {
     /// Resolve to concrete dimensions (orientation-aware).
     pub fn width(&self) -> f32 {
         match self {
-            PageSettings::Preset { preset, orientation } => match orientation {
+            PageSettings::Preset {
+                preset,
+                orientation,
+            } => match orientation {
                 Orientation::Portrait => preset.short_edge(),
                 Orientation::Landscape => preset.long_edge(),
             },
@@ -218,7 +241,10 @@ impl PageSettings {
 
     pub fn height(&self) -> f32 {
         match self {
-            PageSettings::Preset { preset, orientation } => match orientation {
+            PageSettings::Preset {
+                preset,
+                orientation,
+            } => match orientation {
                 Orientation::Portrait => preset.long_edge(),
                 Orientation::Landscape => preset.short_edge(),
             },
@@ -269,17 +295,17 @@ impl PagePreset {
     /// The shorter dimension (portrait width / landscape height).
     pub fn short_edge(self) -> f32 {
         match self {
-            Self::Letter => 612.0,   // 8.5"
+            Self::Letter => 612.0, // 8.5"
             Self::A4 => 595.28,
             Self::A3 => 841.89,
-            Self::Tabloid => 792.0,  // 11"
+            Self::Tabloid => 792.0, // 11"
         }
     }
 
     /// The longer dimension (portrait height / landscape width).
     pub fn long_edge(self) -> f32 {
         match self {
-            Self::Letter => 792.0,   // 11"
+            Self::Letter => 792.0, // 11"
             Self::A4 => 841.89,
             Self::A3 => 1190.55,
             Self::Tabloid => 1224.0, // 17"
@@ -381,9 +407,15 @@ impl DesignAttributeOverrides {
             line_height: self.line_height.or(base.line_height),
             tracking: self.tracking.unwrap_or(base.tracking),
             kerning: self.kerning.unwrap_or(base.kerning),
-            features: self.features.clone().unwrap_or_else(|| base.features.clone()),
+            features: self
+                .features
+                .clone()
+                .unwrap_or_else(|| base.features.clone()),
             language: self.language.clone().or_else(|| base.language.clone()),
-            variations: self.variations.clone().unwrap_or_else(|| base.variations.clone()),
+            variations: self
+                .variations
+                .clone()
+                .unwrap_or_else(|| base.variations.clone()),
             text_align: self.text_align.unwrap_or(base.text_align),
             line_limit: self.line_limit.or(base.line_limit),
             y_offset: self.y_offset.unwrap_or(base.y_offset),

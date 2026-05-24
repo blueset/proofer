@@ -120,9 +120,14 @@ impl PageAllocator {
                 let s = skrifa::prelude::Size::new(size);
                 let gm = font.glyph_metrics(s, skrifa::prelude::LocationRef::default());
                 let cm = font.charmap();
-                return text.chars().map(|ch| {
-                    cm.map(ch).and_then(|gid| gm.advance_width(gid)).unwrap_or(size * 0.3)
-                }).sum();
+                return text
+                    .chars()
+                    .map(|ch| {
+                        cm.map(ch)
+                            .and_then(|gid| gm.advance_width(gid))
+                            .unwrap_or(size * 0.3)
+                    })
+                    .sum();
             }
         }
         // Fallback: approximate
@@ -430,7 +435,11 @@ pub fn layout_document(
                     registry,
                 )?;
             }
-            proof_model::LayoutType::Waterfall { sizes, spacing, label } => {
+            proof_model::LayoutType::Waterfall {
+                sizes,
+                spacing,
+                label,
+            } => {
                 layout_waterfall::layout(
                     &mut allocator,
                     &content,

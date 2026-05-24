@@ -241,10 +241,7 @@ impl TextFlow {
 
 /// Synchronized consumption from multiple flows.
 /// Stops when ANY flow fills its allocation.
-pub fn sync_consume(
-    flows: &mut [TextFlow],
-    height: f32,
-) -> Vec<Vec<ShapedLine>> {
+pub fn sync_consume(flows: &mut [TextFlow], height: f32) -> Vec<Vec<ShapedLine>> {
     let mut results: Vec<Vec<ShapedLine>> = flows.iter().map(|_| Vec::new()).collect();
     let mut remaining = height;
 
@@ -326,8 +323,10 @@ fn shape_with_parley(
 ) -> Result<Vec<ShapedLine>, TextFlowError> {
     use parley::FontContext;
     use parley::LayoutContext;
-    use parley::style::{FontFamily, FontFeature, FontFeatures, FontVariation, FontVariations, LineHeight};
     use parley::setting::Tag as ParleyTag;
+    use parley::style::{
+        FontFamily, FontFeature, FontFeatures, FontVariation, FontVariations, LineHeight,
+    };
 
     // Get font data
     let (font_data, _face_index) = registry.font_data(style.font_id)?;
@@ -338,7 +337,9 @@ fn shape_with_parley(
     let registered = font_ctx.collection.register_fonts(blob, None);
 
     if registered.is_empty() {
-        return Err(TextFlowError::Layout("failed to register font with fontique".into()));
+        return Err(TextFlowError::Layout(
+            "failed to register font with fontique".into(),
+        ));
     }
 
     // Use fontique's own family name (from FamilyId) — this avoids name
@@ -347,7 +348,9 @@ fn shape_with_parley(
     let family_name = font_ctx
         .collection
         .family_name(family_id)
-        .ok_or_else(|| TextFlowError::Layout("fontique registered font but has no family name".into()))?
+        .ok_or_else(|| {
+            TextFlowError::Layout("fontique registered font but has no family name".into())
+        })?
         .to_string();
 
     // Build variation settings
@@ -521,8 +524,15 @@ fn shape_simple(
                 word_width = 0.0;
             }
             lines.push(make_shaped_line(
-                &current_line_glyphs, style.font_id, line_start, byte_offset + ch_len,
-                ascent, descent, leading, line_height, current_x,
+                &current_line_glyphs,
+                style.font_id,
+                line_start,
+                byte_offset + ch_len,
+                ascent,
+                descent,
+                leading,
+                line_height,
+                current_x,
             ));
             current_line_glyphs.clear();
             current_x = 0.0;
@@ -538,7 +548,11 @@ fn shape_simple(
             .map(|g| glyph_metrics.advance_width(g).unwrap_or(0.0))
             .unwrap_or(style.font_size * 0.5);
 
-        let tracking_offset = if char_idx > 0 { style.tracking * style.font_size } else { 0.0 };
+        let tracking_offset = if char_idx > 0 {
+            style.tracking * style.font_size
+        } else {
+            0.0
+        };
 
         if ch.is_whitespace() {
             if !word_glyphs.is_empty() {
@@ -561,12 +575,21 @@ fn shape_simple(
                 && !current_line_glyphs.is_empty()
             {
                 lines.push(make_shaped_line(
-                    &current_line_glyphs, style.font_id, line_start, word_start,
-                    ascent, descent, leading, line_height, current_x - word_width,
+                    &current_line_glyphs,
+                    style.font_id,
+                    line_start,
+                    word_start,
+                    ascent,
+                    descent,
+                    leading,
+                    line_height,
+                    current_x - word_width,
                 ));
                 current_line_glyphs.clear();
                 let offset = word_glyphs.first().map(|g| g.x).unwrap_or(0.0);
-                for g in &mut word_glyphs { g.x -= offset; }
+                for g in &mut word_glyphs {
+                    g.x -= offset;
+                }
                 current_x = word_width;
                 line_start = word_start;
             }
@@ -592,8 +615,15 @@ fn shape_simple(
     }
     if !current_line_glyphs.is_empty() || line_start < text.len() {
         lines.push(make_shaped_line(
-            &current_line_glyphs, style.font_id, line_start, text.len(),
-            ascent, descent, leading, line_height, current_x,
+            &current_line_glyphs,
+            style.font_id,
+            line_start,
+            text.len(),
+            ascent,
+            descent,
+            leading,
+            line_height,
+            current_x,
         ));
     }
 

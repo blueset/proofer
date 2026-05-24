@@ -80,8 +80,8 @@ mod tests {
                     name: Some("Waterfall".to_string()),
                     layout: LayoutType::Waterfall {
                         sizes: vec![8.0, 12.0, 18.0, 24.0, 36.0, 48.0, 72.0],
-                    spacing: 8.0,
-                    label: None,
+                        spacing: 8.0,
+                        label: None,
                     },
                     content: ContentSpec::Text {
                         text: "Hamburgefonstiv".to_string(),
@@ -125,9 +125,7 @@ mod tests {
         let inspector = FontInspector::new(&registry);
         let resolver = content_resolver::ContentResolver::new(FontInspector::new(&registry));
 
-        let content = resolver
-            .resolve(&ContentSpec::AllGlyphs, font_id)
-            .unwrap();
+        let content = resolver.resolve(&ContentSpec::AllGlyphs, font_id).unwrap();
         match &content {
             content_resolver::ResolvedContent::Glyphs(glyphs) => {
                 assert!(!glyphs.is_empty());
@@ -155,9 +153,13 @@ mod tests {
             line_limit: None,
         };
 
-        let mut flow =
-            text_flow::TextFlow::new("The quick brown fox jumps over the lazy dog.", style, 200.0, &registry)
-                .unwrap();
+        let mut flow = text_flow::TextFlow::new(
+            "The quick brown fox jumps over the lazy dog.",
+            style,
+            200.0,
+            &registry,
+        )
+        .unwrap();
 
         assert!(flow.has_remaining());
         assert!(flow.line_count() > 0);
@@ -207,11 +209,7 @@ mod tests {
 
         // Check that pages have commands
         for (i, page) in layout_doc.pages.iter().enumerate() {
-            assert!(
-                !page.commands.is_empty(),
-                "Page {} should have commands",
-                i
-            );
+            assert!(!page.commands.is_empty(), "Page {} should have commands", i);
         }
     }
 
@@ -374,10 +372,7 @@ mod tests {
         let layout_doc =
             page_layout::layout_document(&doc, &[font_id, font_id2], &registry).unwrap();
         assert!(layout_doc.page_count() >= 1);
-        println!(
-            "Style comparison layout: {} pages",
-            layout_doc.page_count()
-        );
+        println!("Style comparison layout: {} pages", layout_doc.page_count());
     }
 
     #[test]
@@ -457,8 +452,8 @@ mod tests {
                     name: Some("Waterfall".to_string()),
                     layout: LayoutType::Waterfall {
                         sizes: vec![8.0, 12.0, 18.0, 24.0, 36.0, 48.0],
-                    spacing: 8.0,
-                    label: None,
+                        spacing: 8.0,
+                        label: None,
                     },
                     content: ContentSpec::Text {
                         text: "Hamburgefonstiv".to_string(),

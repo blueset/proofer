@@ -23,16 +23,31 @@ use font_inspector::{FontInspector, GlyphInfo};
 use font_registry::{FontId, FontRegistry};
 use layout_ir::{Color, DrawCommand, PositionedGlyph, StrokeStyle};
 use proof_model::{DesignAttributes, GlyphGridMode, SubgridAxis};
-use skrifa::raw::TableProvider;
 use skrifa::MetadataProvider;
+use skrifa::raw::TableProvider;
 
 use crate::{LayoutError, PageAllocator};
 
 // ── Colors and constants ────────────────────────────────────────────
 
-const METRIC_BASELINE: Color = Color { r: 0.75, g: 0.75, b: 0.75, a: 1.0 };
-const METRIC_LINES: Color = Color { r: 0.82, g: 0.82, b: 0.82, a: 1.0 };
-const LABEL_COLOR: Color = Color { r: 0.5, g: 0.5, b: 0.5, a: 1.0 };
+const METRIC_BASELINE: Color = Color {
+    r: 0.75,
+    g: 0.75,
+    b: 0.75,
+    a: 1.0,
+};
+const METRIC_LINES: Color = Color {
+    r: 0.82,
+    g: 0.82,
+    b: 0.82,
+    a: 1.0,
+};
+const LABEL_COLOR: Color = Color {
+    r: 0.5,
+    g: 0.5,
+    b: 0.5,
+    a: 1.0,
+};
 const LABEL_SIZE: f32 = 5.0;
 const ROW_GAP: f32 = 8.0;
 const SLNT_AXIS_TAG: &str = "slnt";
@@ -96,7 +111,10 @@ impl MetricSlant {
             return None;
         }
 
-        slope.is_finite().then_some(Self { slope, caret_offset })
+        slope.is_finite().then_some(Self {
+            slope,
+            caret_offset,
+        })
     }
 
     fn x_at_y(&self, base_x: f32, baseline_y: f32, guide_y: f32) -> f32 {
@@ -190,14 +208,12 @@ fn varied_caret_slope(
     base_rise: f32,
     base_run: f32,
 ) -> Option<f32> {
-    let rise = base_rise
-        + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRS, coords);
+    let rise = base_rise + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRS, coords);
     if rise.abs() <= SLANT_EPSILON {
         return None;
     }
 
-    let run = base_run
-        + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRN, coords);
+    let run = base_run + mvar_metric_delta(font, skrifa::raw::tables::mvar::tags::HCRN, coords);
     MetricSlant::from_slope(run / rise, 0.0).map(|slant| slant.slope)
 }
 
@@ -257,17 +273,16 @@ fn compute_glyph_cells(
                     let advance = advance_raw * scale;
                     let lsb = lsb_raw * scale;
 
-                    let (ink_left, ink_right, ink_top, ink_bottom) =
-                        if let Some(bbox) = bbox {
-                            (
-                                (bbox.x_min * scale).min(0.0),
-                                (bbox.x_max * scale).max(advance),
-                                bbox.y_max * scale,
-                                bbox.y_min * scale,
-                            )
-                        } else {
-                            (0.0_f32.min(lsb), advance, 0.0, 0.0)
-                        };
+                    let (ink_left, ink_right, ink_top, ink_bottom) = if let Some(bbox) = bbox {
+                        (
+                            (bbox.x_min * scale).min(0.0),
+                            (bbox.x_max * scale).max(advance),
+                            bbox.y_max * scale,
+                            bbox.y_min * scale,
+                        )
+                    } else {
+                        (0.0_f32.min(lsb), advance, 0.0, 0.0)
+                    };
 
                     sub_row.push(SubCellData {
                         advance,
@@ -341,8 +356,7 @@ pub fn layout(
     let sub_gap = font_size * SUB_GAP_FRACTION;
 
     // Build the [n_rows][n_cols] variation matrix and corresponding Locations.
-    let variation_matrix =
-        build_variation_matrix(&design_attrs.variations, subgrid_x, subgrid_y);
+    let variation_matrix = build_variation_matrix(&design_attrs.variations, subgrid_x, subgrid_y);
     let n_rows = variation_matrix.len();
     let n_cols = variation_matrix.first().map(|r| r.len()).unwrap_or(0);
 
@@ -393,7 +407,8 @@ pub fn layout(
                     &font,
                     skrifa::raw::tables::mvar::tags::HCOF,
                     loc_ref.coords(),
-                )) * scale;
+                ))
+                * scale;
             let caret_slope = varied_caret_slope(
                 &font,
                 loc_ref.coords(),
@@ -628,14 +643,9 @@ fn layout_compact(
     let glyph_dims: Vec<GlyphDims> = cells
         .iter()
         .map(|cell| {
-            let row_extents = compute_row_extents(
-                std::iter::once(cell),
-                metrics_matrix,
-                n_rows,
-                n_cols,
-            );
-            let col_widths =
-                compute_col_widths(std::iter::once(cell), n_rows, n_cols);
+            let row_extents =
+                compute_row_extents(std::iter::once(cell), metrics_matrix, n_rows, n_cols);
+            let col_widths = compute_col_widths(std::iter::once(cell), n_rows, n_cols);
             let matrix_w = matrix_natural_width(&col_widths, sub_gap);
             let matrix_h = row_extents.total_height(sub_gap);
             let inner_w = matrix_w.max(cell.label_width).max(min_cell_width);
@@ -683,7 +693,12 @@ fn layout_compact(
         );
         let shared_matrix_h = row_extents.total_height(sub_gap);
         row_height = row_height.max(shared_matrix_h + padding * 2.0 + label_height);
-        rows.push(RowInfo { indices, natural_width, height: row_height, row_extents });
+        rows.push(RowInfo {
+            indices,
+            natural_width,
+            height: row_height,
+            row_extents,
+        });
     }
 
     let total_rows = rows.len();
@@ -698,7 +713,11 @@ fn layout_compact(
 
         while row_idx < rows.len() {
             let rh = rows[row_idx].height;
-            let needed = if page_rows.is_empty() { rh } else { rh + ROW_GAP };
+            let needed = if page_rows.is_empty() {
+                rh
+            } else {
+                rh + ROW_GAP
+            };
             if page_content_height + needed > available && !page_rows.is_empty() {
                 break;
             }
@@ -722,12 +741,14 @@ fn layout_compact(
             let n = row.indices.len();
 
             let (cell_positions, effective_cell_widths) = if is_single_line {
-                let total_natural: f32 =
-                    row.indices.iter().map(|&i| glyph_dims[i].outer_w).sum();
-                let total_gaps = if n > 1 { (n - 1) as f32 * base_gap } else { 0.0 };
+                let total_natural: f32 = row.indices.iter().map(|&i| glyph_dims[i].outer_w).sum();
+                let total_gaps = if n > 1 {
+                    (n - 1) as f32 * base_gap
+                } else {
+                    0.0
+                };
                 let total_with_gaps = total_natural + total_gaps;
-                let start_x =
-                    body_left + (body_width - total_with_gaps).max(0.0) / 2.0;
+                let start_x = body_left + (body_width - total_with_gaps).max(0.0) / 2.0;
 
                 let mut positions = Vec::with_capacity(n);
                 let mut widths = Vec::with_capacity(n);
@@ -743,7 +764,11 @@ fn layout_compact(
                 (positions, widths)
             } else if ri < rows.len() - 1 {
                 let extra_space = body_width - row.natural_width;
-                let gap = if n > 1 { extra_space / (n - 1) as f32 } else { 0.0 };
+                let gap = if n > 1 {
+                    extra_space / (n - 1) as f32
+                } else {
+                    0.0
+                };
 
                 let mut positions = Vec::with_capacity(n);
                 let mut widths = Vec::with_capacity(n);

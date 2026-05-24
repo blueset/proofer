@@ -6,7 +6,7 @@ use layout_ir::{Color, DrawCommand};
 use proof_model::DesignAttributes;
 use text_flow::TextFlow;
 
-use crate::{build_text_style, LayoutError, PageAllocator};
+use crate::{LayoutError, PageAllocator, build_text_style};
 
 pub fn layout(
     allocator: &mut PageAllocator,
@@ -53,7 +53,12 @@ pub fn layout(
         } else {
             page_top
         };
-        let content_height = available_height - if column_label.is_some() { label_height } else { 0.0 };
+        let content_height = available_height
+            - if column_label.is_some() {
+                label_height
+            } else {
+                0.0
+            };
 
         // Fill columns left to right, collecting which columns got text
         let mut any_consumed = false;
@@ -72,8 +77,12 @@ pub fn layout(
             filled_columns[col] = true;
             any_consumed = true;
             let commands = TextFlow::lines_to_commands(
-                &lines, col_x, content_top, &text,
-                design_attrs.font_size, &design_attrs.variations,
+                &lines,
+                col_x,
+                content_top,
+                &text,
+                design_attrs.font_size,
+                &design_attrs.variations,
             );
 
             for cmd in commands {
@@ -87,7 +96,13 @@ pub fn layout(
                 if filled_columns[col] {
                     let col_x = body_left + col as f32 * (col_width + gutter);
                     allocator.push_command(DrawCommand::Label {
-                        x: allocator.aligned_label_x(label, 7.0, design_attrs.text_align, col_x, col_width),
+                        x: allocator.aligned_label_x(
+                            label,
+                            7.0,
+                            design_attrs.text_align,
+                            col_x,
+                            col_width,
+                        ),
                         text: label.to_string(),
                         y: page_top + 9.0,
                         size: 7.0,

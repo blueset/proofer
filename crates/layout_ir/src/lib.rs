@@ -150,10 +150,7 @@ impl StrokeStyle {
     }
 
     pub fn hairline(color: Color) -> Self {
-        Self {
-            width: 0.25,
-            color,
-        }
+        Self { width: 0.25, color }
     }
 }
 

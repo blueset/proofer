@@ -123,9 +123,9 @@ impl<'a> FontInspector<'a> {
         let mut reverse_cmap: HashMap<u32, char> = HashMap::new();
         for (codepoint, glyph_id) in charmap.mappings() {
             let gid = glyph_id.to_u32();
-            reverse_cmap.entry(gid).or_insert_with(|| {
-                char::from_u32(codepoint).unwrap_or('\u{FFFD}')
-            });
+            reverse_cmap
+                .entry(gid)
+                .or_insert_with(|| char::from_u32(codepoint).unwrap_or('\u{FFFD}'));
         }
 
         // Try to read post table for glyph names
@@ -248,10 +248,7 @@ impl<'a> FontInspector<'a> {
     }
 
     /// Get the set of supported codepoints.
-    pub fn supported_codepoints(
-        &self,
-        font_id: FontId,
-    ) -> Result<Vec<char>, InspectorError> {
+    pub fn supported_codepoints(&self, font_id: FontId) -> Result<Vec<char>, InspectorError> {
         let font = self.registry.font_ref(font_id)?;
         let charmap = font.charmap();
         let mut codepoints = Vec::new();

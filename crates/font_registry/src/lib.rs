@@ -228,21 +228,18 @@ fn extract_metadata(
         .find_map(|s| Some(s.chars().collect::<String>()))
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let style_table =
-        font.localized_strings(skrifa::string::StringId::SUBFAMILY_NAME);
+    let style_table = font.localized_strings(skrifa::string::StringId::SUBFAMILY_NAME);
     let style = style_table
         .into_iter()
         .find_map(|s| Some(s.chars().collect::<String>()))
         .unwrap_or_else(|| "Regular".to_string());
 
-    let version_table =
-        font.localized_strings(skrifa::string::StringId::VERSION_STRING);
+    let version_table = font.localized_strings(skrifa::string::StringId::VERSION_STRING);
     let version = version_table
         .into_iter()
         .find_map(|s| Some(s.chars().collect::<String>()));
 
-    let designer_table =
-        font.localized_strings(skrifa::string::StringId::DESIGNER);
+    let designer_table = font.localized_strings(skrifa::string::StringId::DESIGNER);
     let designer = designer_table
         .into_iter()
         .find_map(|s| Some(s.chars().collect::<String>()));

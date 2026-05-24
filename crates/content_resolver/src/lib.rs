@@ -83,8 +83,14 @@ impl<'a> ContentResolver<'a> {
                 separator,
             } => {
                 let text = expand_pattern(
-                    glyphs, templates, between.as_ref(), wrap, placeholder, separator,
-                    font_id, &self.inspector,
+                    glyphs,
+                    templates,
+                    between.as_ref(),
+                    wrap,
+                    placeholder,
+                    separator,
+                    font_id,
+                    &self.inspector,
                 )?;
                 Ok(ResolvedContent::Text(text))
             }
@@ -96,10 +102,7 @@ impl<'a> ContentResolver<'a> {
                         ResolvedContent::Text(t) => texts.push(t),
                         ResolvedContent::Glyphs(glyphs) => {
                             // Convert glyphs to text for concatenation
-                            let t: String = glyphs
-                                .iter()
-                                .filter_map(|g| g.codepoint)
-                                .collect();
+                            let t: String = glyphs.iter().filter_map(|g| g.codepoint).collect();
                             texts.push(t);
                         }
                     }
@@ -162,7 +165,10 @@ fn filter_glyphs(
             // Range filter
             if !ranges.is_empty() {
                 let cp_u32 = cp as u32;
-                if !ranges.iter().any(|(start, end)| cp_u32 >= *start && cp_u32 <= *end) {
+                if !ranges
+                    .iter()
+                    .any(|(start, end)| cp_u32 >= *start && cp_u32 <= *end)
+                {
                     return false;
                 }
             }

@@ -42,7 +42,10 @@ fn main() {
     }
 }
 
-fn cmd_generate(input: &std::path::Path, output: Option<&std::path::Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_generate(
+    input: &std::path::Path,
+    output: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Determine output path
     let output_path = match output {
         Some(p) => p.to_path_buf(),
@@ -57,9 +60,7 @@ fn cmd_generate(input: &std::path::Path, output: Option<&std::path::Path>) -> Re
         .map_err(|e| format!("failed to parse {}: {e}", input.display()))?;
 
     // Resolve relative paths against the input file's directory
-    let base_dir = input
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+    let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new("."));
     doc.resolve_paths(base_dir);
 
     // Validate
