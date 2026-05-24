@@ -398,6 +398,9 @@ fn shape_with_parley(
     builder.push_default(parley::style::StyleProperty::LineHeight(
         LineHeight::FontSizeRelative(style.line_height.unwrap_or(1.2)),
     ));
+    builder.push_default(parley::style::StyleProperty::OverflowWrap(
+        parley::style::OverflowWrap::BreakWord,
+    ));
     if !var_settings.is_empty() {
         builder.push_default(parley::style::StyleProperty::FontVariations(
             FontVariations::List(std::borrow::Cow::Owned(var_settings)),
