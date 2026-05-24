@@ -306,6 +306,20 @@ pub struct ResolvedStyleVariant {
     pub label: Option<String>,
 }
 
+fn font_header_name(metadata: &font_registry::FontMetadata, show_font_version: bool) -> String {
+    if show_font_version {
+        if let Some(version) = metadata
+            .version
+            .as_deref()
+            .filter(|version| !version.trim().is_empty())
+        {
+            return format!("{} {}", metadata.family, version);
+        }
+    }
+
+    metadata.family.clone()
+}
+
 /// Resolve style variants for a section.
 /// If the section has explicit `styles`, use those.
 /// Otherwise, create one variant per font_index with the base design_attrs.
@@ -379,7 +393,7 @@ pub fn layout_document(
         // Get font name for headers
         let font_name = registry
             .metadata(primary_font_id)
-            .map(|m| format!("{}", m.family))
+            .map(|m| font_header_name(m, section.header_config.show_font_version))
             .unwrap_or_else(|_| "Unknown".to_string());
 
         // Begin each section on a new page (except the very first section
@@ -512,4 +526,35 @@ pub fn layout_document(
     }
 
     Ok(allocator.into_document())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn font_metadata(version: Option<&str>) -> font_registry::FontMetadata {
+        font_registry::FontMetadata {
+            family: "Acme".to_string(),
+            style: "Regular".to_string(),
+            version: version.map(str::to_string),
+            designer: None,
+            is_variable: false,
+            face_count: 1,
+            source_path: None,
+        }
+    }
+
+    #[test]
+    fn font_header_name_appends_version_when_enabled() {
+        let metadata = font_metadata(Some("Version 1.234"));
+
+        assert_eq!(font_header_name(&metadata, true), "Acme Version 1.234");
+    }
+
+    #[test]
+    fn font_header_name_omits_version_when_disabled() {
+        let metadata = font_metadata(Some("Version 1.234"));
+
+        assert_eq!(font_header_name(&metadata, false), "Acme");
+    }
 }

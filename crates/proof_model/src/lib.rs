@@ -700,6 +700,8 @@ pub struct HeaderConfig {
     #[serde(default = "default_true")]
     pub show_font_name: bool,
     #[serde(default = "default_true")]
+    pub show_font_version: bool,
+    #[serde(default = "default_true")]
     pub show_datetime: bool,
     #[serde(default = "default_true")]
     pub show_page_numbers: bool,
@@ -710,6 +712,7 @@ impl Default for HeaderConfig {
         Self {
             show_header: true,
             show_font_name: true,
+            show_font_version: true,
             show_datetime: true,
             show_page_numbers: true,
         }
@@ -836,5 +839,22 @@ mod tests {
         assert!(schema.contains("ProofDocument"));
         assert!(schema.contains("LayoutType"));
         assert!(schema.contains("ContentSpec"));
+    }
+
+    #[test]
+    fn header_config_defaults_show_font_version() {
+        assert!(HeaderConfig::default().show_font_version);
+
+        let config: HeaderConfig = serde_json::from_str(
+            r#"{
+                "show_header": true,
+                "show_font_name": true,
+                "show_datetime": false,
+                "show_page_numbers": false
+            }"#,
+        )
+        .unwrap();
+
+        assert!(config.show_font_version);
     }
 }
