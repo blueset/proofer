@@ -325,7 +325,7 @@ fn shape_with_parley(
     use parley::LayoutContext;
     use parley::setting::Tag as ParleyTag;
     use parley::style::{
-        FontFamily, FontFeature, FontFeatures, FontVariation, FontVariations, LineHeight,
+        FontFamily, FontFeature, FontFeatures, FontVariation, FontVariations, Language, LineHeight,
     };
 
     // Get font data
@@ -383,8 +383,6 @@ fn shape_with_parley(
         })
         .collect();
 
-    let font = registry.font_ref(style.font_id)?;
-
     // Build parley layout using ranged builder with individual style properties
     let mut layout_ctx: LayoutContext<[u8; 4]> = LayoutContext::new();
     let mut builder = layout_ctx.ranged_builder(&mut font_ctx, text, 1.0, false);
@@ -398,6 +396,15 @@ fn shape_with_parley(
     builder.push_default(parley::style::StyleProperty::LineHeight(
         LineHeight::FontSizeRelative(style.line_height.unwrap_or(1.2)),
     ));
+    if let Some(locale) = style
+        .language
+        .as_deref()
+        .map(str::trim)
+        .filter(|language| !language.is_empty())
+        .and_then(|language| Language::parse(language).ok())
+    {
+        builder.push_default(parley::style::StyleProperty::Locale(Some(locale)));
+    }
     builder.push_default(parley::style::StyleProperty::OverflowWrap(
         parley::style::OverflowWrap::BreakWord,
     ));
