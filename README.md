@@ -10,6 +10,13 @@ Install a current stable [Rust toolchain](https://rustup.rs/) (including Cargo),
 cargo build --workspace --locked
 ```
 
+On Ubuntu or Debian, install the native fontconfig development files and `pkg-config` first:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libfontconfig1-dev pkg-config
+```
+
 The executable is `target/debug/proofer` (or `target\debug\proofer.exe` on Windows). The build uses the checked-in `Cargo.lock` and the patched `vendor/subsetter` crate.
 
 ## Generate a proof
